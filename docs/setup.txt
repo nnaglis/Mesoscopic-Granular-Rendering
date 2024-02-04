@@ -1,0 +1,15 @@
+Reference to setup (adding the GLFW libraries and setting up a makefile for compilation)
+https://youtu.be/6AHq0jTrypw?si=Hd9DE22rmtyZBYtK
+
+Reference to setup using Xcode
+https://youtu.be/MHlbNbWlrIM?si=vZYdNcfd0maDTUfI
+
+    Additional set up required regarding code signing of the libglfw.3 file  by issuing the following in the terminal:
+        codesign -s "Apple Development: nnaglis@icloud.com (258EQ6QRZB)" /Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/30:1:xcodeTest/helloOpenGL/helloOpenGL/src/libraries/GLFW/lib/libglfw.3.dylib
+    Then i need to make sure to set up stuff signing related in the xcode project to Naglis Naslenas
+
+
+Adding GLAD 
+    Retrieving of GLfunctions that would be not OS specific is done by GLAD
+        set up using https://learnopengl.com book 
+        with an online tool OpenGL 4.1 selected (the latest one supported on M series chips)
