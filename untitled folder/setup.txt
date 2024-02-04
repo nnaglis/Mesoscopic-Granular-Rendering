@@ -1,2 +1,0 @@
-Reference to setup (adding the GLFW libraries and setting up a makefile for compilation)
-https://youtu.be/6AHq0jTrypw?si=Hd9DE22rmtyZBYtK
