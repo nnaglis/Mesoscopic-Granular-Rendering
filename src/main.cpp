@@ -2,6 +2,7 @@
 #include "libraries/glad/glad.h"
 #include "libraries/GLFW/glfw3.h"
 #include <iostream>
+#include "shader.h"
 
 // TEST VERTICES
 float vertices[] = {
@@ -14,24 +15,6 @@ float vertices[] = {
         0, 1, 3,  // first Triangle
         1, 2, 3   // second Triangle
     };
-
-//TEST VERTEX SHADER
-const char *vertexShaderSource = "#version 410 core\n"
-   "layout (location = 0) in vec3 aPos; // position has attribute position 0\n"
-   "out vec4 vertexColor; // specify a color output to the fragment shader\n"
-    "void main() {\n"
-       "gl_Position = vec4(aPos, 1.0); // we give a vec3 to vec4’s constructor\n"
-       "vertexColor = vec4(aPos, 1.0); // output variable to dark-red\n"
-   "}\n\0";
-
-//TEST FRAGMENT SHADER
-const char *fragmentShaderSource = "#version 410 core\n"
-    "out vec4 FragColor;\n"
-    "in vec4 vertexColor; // the input variable from the vertex shader (same name and same type)\n"
-    "void main()\n"
-    "{\n"
-    "   FragColor = vertexColor;\n"
-    "}\n\0";
 
 // Registering a callback function that gets called each time the window is resized.
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -86,24 +69,8 @@ int main(void)
 
     // Registering the callback function on window resize to make sure OpenGL renders the image in the right size whenever the window is resized.
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-
-    // Compiling the vertex shader
-        unsigned int vertexShader;
-        vertexShader = glCreateShader(GL_VERTEX_SHADER);
-
-        // Attaching the shader source code to the shader object and compiling the shader
-        glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-        glCompileShader(vertexShader);
-
-        // Checking if the shader compilation was successful
-        int success;
-        char infoLog[512];
-        glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-        if(!success)
-            {
-                glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-                std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
-            }
+    std::cout << "OpenGL version: " << glGetString(GL_VERSION) << std::endl;
+    Shader ourShader("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL/src/shaders/vertexShader.vs", "/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL/src/shaders/fragmentShader.fs");
 
     // Generating the vertex array object
         unsigned int VAO;
@@ -126,41 +93,8 @@ int main(void)
         // sending the data to the buffer
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-
-    
-    // Fragment shader
-        unsigned int fragmentShader;
-        fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-        glCompileShader(fragmentShader);
-
-        // Checking if the shader compilation was successful
-        glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-        if(!success)
-            {
-                glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-                std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
-            }
-
     // Linking the shaders
-        unsigned int shaderProgram;
-        shaderProgram = glCreateProgram();
-        glAttachShader(shaderProgram, vertexShader);
-        glAttachShader(shaderProgram, fragmentShader);
-        glLinkProgram(shaderProgram);
-
-        // Checking if the shader linking was successful
-        glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-        if(!success) {
-            glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-            std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
-        }
-
-        
-
-        // Deleting the shader objects
-        glDeleteShader(vertexShader);
-        glDeleteShader(fragmentShader);
+        ourShader.use();
 
     // Setting the vertex attribute pointers
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
@@ -173,9 +107,6 @@ int main(void)
         /* Render here */
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-
-        // Using the shader program
-        glUseProgram(shaderProgram);
 
         // Drawing the square
         glBindVertexArray(VAO);
