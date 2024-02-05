@@ -3,27 +3,41 @@
 #include "libraries/GLFW/glfw3.h"
 #include <iostream>
 #include "shader.h"
+#include "sphere.h"
 
 // TEST VERTICES
-float vertices[] = {
-         0.5f,  0.5f, 0.0f,  // top right
-         0.5f, -0.5f, 0.0f,  // bottom right
-        -0.5f, -0.5f, 0.0f,  // bottom left
-        -0.5f,  0.5f, 0.0f   // top left 
-    };
+//create sphere
+Sphere sphere(1.0f, 30, 30, 1.0f);
+
+
     unsigned int indices[] = {  // note that we start from 0!
-        0, 1, 3,  // first Triangle
+        0, 2, 1,  // first Triangle
         1, 2, 3   // second Triangle
     };
+
+unsigned int VBO;
+
 
 // Registering a callback function that gets called each time the window is resized.
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     {
         glViewport(0, 0, width, height);
+
+    // Calculate new aspect ratio
+    float aspectRatio = (float)width / (float)height;
+
+    // Recreate the sphere with the new aspect ratio
+    sphere = Sphere(sphere.radius, sphere.sectorCount, sphere.stackCount, aspectRatio);
+
+    // Update the VBO with the new vertex data
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * sphere.getVertexCount(), sphere.getVertices(), GL_STATIC_DRAW);
     }
 
 int main(void)
 {
+
+
     GLFWwindow* window;
 
     /* Initialize the library */
@@ -69,7 +83,6 @@ int main(void)
 
     // Registering the callback function on window resize to make sure OpenGL renders the image in the right size whenever the window is resized.
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    std::cout << "OpenGL version: " << glGetString(GL_VERSION) << std::endl;
     Shader ourShader("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL/src/shaders/vertexShader.vs", "/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL/src/shaders/fragmentShader.fs");
 
     // Generating the vertex array object
@@ -78,12 +91,11 @@ int main(void)
         glBindVertexArray(VAO);
 
     // creating a Vertex buffer object
-        unsigned int VBO;
         glGenBuffers(1, &VBO);
         // binding the buffer type
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         // sending the data to the buffer
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float)*sphere.getVertexCount(), sphere.getVertices(), GL_STATIC_DRAW);
 
     // generating an element buffer object
         unsigned int EBO;
@@ -91,7 +103,7 @@ int main(void)
         // binding the buffer type
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
         // sending the data to the buffer
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int)* sphere.getIndexCount(), sphere.getIndices(), GL_STATIC_DRAW);
 
     // Linking the shaders
         ourShader.use();
@@ -99,6 +111,7 @@ int main(void)
     // Setting the vertex attribute pointers
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
+
     
     /* Loop until the user closes the window */
     // The render loop
@@ -110,7 +123,10 @@ int main(void)
 
         // Drawing the square
         glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, sphere.getIndexCount(), GL_UNSIGNED_INT, 0);
+    
+        //adjust point size
+        glPointSize(10.0f);
 
         
 
