@@ -5,9 +5,14 @@
 #include "shader.h"
 #include "sphere.h"
 
+// window size
+const unsigned int SCR_WIDTH = 800;
+const unsigned int SCR_HEIGHT = 600;
+
+
 // TEST VERTICES
 //create sphere
-Sphere sphere(1.0f, 30, 30, 1.0f);
+Sphere sphere(1.0f, 30, 30, (float)SCR_WIDTH/(float)SCR_HEIGHT);
 
 
     unsigned int indices[] = {  // note that we start from 0!
@@ -22,7 +27,6 @@ unsigned int VBO;
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     {
         glViewport(0, 0, width, height);
-
     // Calculate new aspect ratio
     float aspectRatio = (float)width / (float)height;
 
@@ -36,7 +40,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 
 int main(void)
 {
-
+    std::cout << "Vertex count: " << (float)SCR_WIDTH/(float)SCR_HEIGHT << std::endl;
 
     GLFWwindow* window;
 
@@ -57,7 +61,7 @@ int main(void)
     #endif
 
     /* Create a windowed mode window and its OpenGL context */
-    window = glfwCreateWindow(640, 480, "OpenGL Reference", NULL, NULL);
+    window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "OpenGL Reference", NULL, NULL);
     if (!window)
     {
         glfwTerminate();
