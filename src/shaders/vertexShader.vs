@@ -1,17 +1,15 @@
 #version 410 core
 
 layout (location = 0) in vec3 aPos; // position has attribute position 0
-out vec4 vertexColor; // specify a color output to the fragment shader
+layout (location = 1) in vec2 vertexUV; // texture coordinates
 
-//structure for ray tracing
-struct Ray {
-    vec3 origin;
-    vec3 direction;
-};
+uniform mat4 modelMatrix;
+uniform mat4 viewMatrix;
+uniform mat4 projectionMatrix;
 
-
+out vec2 fragUV;
 
 void main() {
-    gl_Position = vec4(aPos, 1.0); // we give a vec3 to vec4’s constructor
-    vertexColor = vec4(aPos, 1.0); // output variable to dark-red
+    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(aPos, 1.0);
+    fragUV = vertexUV; // pass the texture coordinates to the fragment shader
 }

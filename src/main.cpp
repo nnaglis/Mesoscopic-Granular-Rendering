@@ -8,14 +8,40 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "libraries/stb_image.h"
 
+
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 // window size
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
+// FPS counter
+double lastTime = glfwGetTime();
+int nbFrames = 0;
+
+// Camera
+float radius = 3.0f;
+float verticalAngle = 0.0f;
+float horizontalAngle = 0.0f;
+float cameraSpeed = 0.03f; // camera speed per frame
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, radius);
+float fov = 90.0f;
+// Near and Far clipping planes
+float nearPlane = 0.1f;
+float farPlane = 100.0f;
+
+
+// MVP matrices
+glm::mat4 modelMatrix = glm::mat4(1.0f);    // Calculate model matrix
+glm::mat4 viewMatrix = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)); // Calculate view matrix
+glm::mat4 projectionMatrix = glm::perspective(glm::radians(fov), (float)SCR_WIDTH/(float)SCR_HEIGHT, nearPlane, farPlane); // Calculate projection matrix
+
 
 // TEST VERTICES
 //create sphere
-Sphere sphere(1.0f, 30, 30, (float)SCR_WIDTH/(float)SCR_HEIGHT);
+Sphere sphere(1.0f, 30, 30);
 
 
     unsigned int indices[] = {  // note that we start from 0!
@@ -33,13 +59,17 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     // Calculate new aspect ratio
     float aspectRatio = (float)width / (float)height;
 
-    // Recreate the sphere with the new aspect ratio
-    sphere = Sphere(sphere.radius, sphere.sectorCount, sphere.stackCount, aspectRatio);
-
-    // Update the VBO with the new vertex data
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * sphere.getVertexCount(), sphere.getVertices(), GL_STATIC_DRAW);
+    projectionMatrix  = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
+    // // Update the VBO with the new vertex data
+    // glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    // glBufferData(GL_ARRAY_BUFFER, sizeof(float) * sphere.getVertexCount(), sphere.getVertices(), GL_STATIC_DRAW);
     }
+
+// function declarations
+void CalculateFrameRate(GLFWwindow* window);
+void key_callback(GLFWwindow* window);
+// void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+
 
 int main(void)
 {
@@ -146,7 +176,6 @@ int main(void)
         // sending the data to the buffer
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int)* sphere.getIndexCount(), sphere.getIndices(), GL_STATIC_DRAW);
 
-
         // Setting the vertex attribute pointers for position data
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
@@ -167,14 +196,32 @@ int main(void)
 
     // Linking the shaders
         ourShader.use();
+
+    // Enable depth test
+        glEnable(GL_DEPTH_TEST);
     
     /* Loop until the user closes the window */
     // The render loop
+
+    GLint modelMatrixLoc = glGetUniformLocation(ourShader.ID, "modelMatrix");
+    GLint viewMatrixLoc = glGetUniformLocation(ourShader.ID, "viewMatrix");
+    GLint projectionMatrixLoc = glGetUniformLocation(ourShader.ID, "projectionMatrix");
+
     while (!glfwWindowShouldClose(window))
     {
+        //check for key input (for camera movement)
+        key_callback(window);
+        // MVP matrices to be used in the vertex shader
+        glUniformMatrix4fv(modelMatrixLoc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
+        glUniformMatrix4fv(viewMatrixLoc, 1, GL_FALSE, glm::value_ptr(viewMatrix));
+        glUniformMatrix4fv(projectionMatrixLoc, 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+
+
+
+
         /* Render here */
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         //set texture
         glBindTexture(GL_TEXTURE_2D, texture);
@@ -191,11 +238,59 @@ int main(void)
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
 
+        //get key input (switched due to low performance of the callback function)
+        // glfwSetKeyCallback(window, key_callback);
+
         /* Poll for and process events */
         // e.g. keyboard input, mouse movement, etc.
         glfwPollEvents();
+
+        CalculateFrameRate(window);
     }
 
     glfwTerminate();
     return 0;
+}
+
+//change the name of the window to have the FPS
+void CalculateFrameRate(GLFWwindow* window)
+{
+    // Measure speed
+    double currentTime = glfwGetTime();
+    nbFrames++;
+    if (currentTime - lastTime >= 1.0) { // If last prinf() was more than 1 sec ago
+        // printf and reset timer
+        glfwSetWindowTitle(window, ("OpenGL Reference " + std::to_string(nbFrames) + " FPS").c_str());
+        nbFrames = 0;
+        lastTime += 1.0;
+    }
+}
+
+// void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+inline void key_callback(GLFWwindow* window)
+{
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+    {
+        verticalAngle += cameraSpeed;
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+    {
+        verticalAngle -= cameraSpeed;
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+    {
+        horizontalAngle -= cameraSpeed;
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+    {
+        horizontalAngle += cameraSpeed;
+    }
+
+// Calculate the new camera position using the angles and the radius
+cameraPos.x = radius * cos(verticalAngle) * sin(horizontalAngle);
+cameraPos.y = radius * sin(verticalAngle);
+cameraPos.z = radius * cos(verticalAngle) * cos(horizontalAngle);
+
+// Update the view matrix
+viewMatrix = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 }

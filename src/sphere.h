@@ -22,7 +22,7 @@ struct Sphere {
 
 
     // Constructor
-    Sphere(float radius, int sectorCount, int stackCount, float aspectRatio = 1.0f) {
+    Sphere(float radius, int sectorCount, int stackCount) {
         this->radius = radius;
         this->sectorCount = sectorCount;
         this->stackCount = stackCount;
@@ -58,12 +58,6 @@ struct Sphere {
                 // vertex position (x, y, z)
                 x = xy * cosf(sectorAngle);            // r * cos(u) * cos(v)
                 y = xy * sinf(sectorAngle);            // r * cos(u) * sin(v) 
-                if (aspectRatio >= 1.0f) {
-                    x /= aspectRatio;
-                }
-                if (aspectRatio < 1.0f) {
-                    y *= aspectRatio;
-                }
                 vertices[vertexCount++] = x;
                 vertices[vertexCount++] = y;
                 vertices[vertexCount++] = z;
