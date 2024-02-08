@@ -5,6 +5,9 @@
 #include "shader.h"
 #include "sphere.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "libraries/stb_image.h"
+
 // window size
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -40,7 +43,6 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 
 int main(void)
 {
-    std::cout << "Vertex count: " << (float)SCR_WIDTH/(float)SCR_HEIGHT << std::endl;
 
     GLFWwindow* window;
 
@@ -87,7 +89,42 @@ int main(void)
 
     // Registering the callback function on window resize to make sure OpenGL renders the image in the right size whenever the window is resized.
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    Shader ourShader("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL/src/shaders/vertexShader.vs", "/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL/src/shaders/fragmentShader.fs");
+    Shader ourShader("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL_Xcode/src/shaders/vertexShader.vs", "/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL_Xcode/src/shaders/fragmentShader.fs");
+
+    // Load texture
+    unsigned int texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    // set the texture wrapping parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// set texture wrapping to GL_REPEAT (default wrapping method)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    // set texture filtering parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // load and generate the texture
+    int width, height, nrChannels;
+    unsigned char *data = stbi_load("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL/resources/textures/container.jpg", &width, &height, &nrChannels, 0);
+    std::cout << "Width: " << width << " Height: " << height << " nrChannels: " << nrChannels << std::endl;
+    if (data)
+    {
+        // generate the texture
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+        // generate the mipmap
+        glGenerateMipmap(GL_TEXTURE_2D);
+        // set the texture wrapping/filtering options (on the currently bound texture object)
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        // // Set the uniform variable in the shader to the texture unit
+        // glUniform1i(glGetUniformLocation(ourShader.ID, "tex"), 0);
+    }
+    else
+    {
+        std::cout << "Failed to load texture" << std::endl;
+    }
+    // free the image memory
+    stbi_image_free(data);
 
     // Generating the vertex array object
         unsigned int VAO;
@@ -109,13 +146,27 @@ int main(void)
         // sending the data to the buffer
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int)* sphere.getIndexCount(), sphere.getIndices(), GL_STATIC_DRAW);
 
-    // Linking the shaders
-        ourShader.use();
 
-    // Setting the vertex attribute pointers
+        // Setting the vertex attribute pointers for position data
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
 
+    //creating a texture buffer object 
+        unsigned int TBO;
+        glGenBuffers(1, &TBO);
+        // binding the buffer type
+        glBindBuffer(GL_ARRAY_BUFFER, TBO);
+        // sending the data to the buffer
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float)*sphere.getTexCoordCount(), sphere.getTexCoords(), GL_STATIC_DRAW);
+
+        // Link the texture coordinates to the vertex shader
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+
+
+
+    // Linking the shaders
+        ourShader.use();
     
     /* Loop until the user closes the window */
     // The render loop
@@ -125,12 +176,15 @@ int main(void)
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
+        //set texture
+        glBindTexture(GL_TEXTURE_2D, texture);
+
         // Drawing the square
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, sphere.getIndexCount(), GL_UNSIGNED_INT, 0);
     
         //adjust point size
-        glPointSize(10.0f);
+        // glPointSize(10.0f);
 
         
 

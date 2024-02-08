@@ -13,6 +13,8 @@ struct Sphere {
     unsigned int* indices;
     unsigned int vertexCount;
     unsigned int indexCount;
+    unsigned int texCoordCount;
+    unsigned int normalCount;
 
     float radius;
     int sectorCount;
@@ -29,8 +31,8 @@ struct Sphere {
         float nx, ny, nz, lengthInv = 1.0f / radius;    // vertex normal
         float s, t;                                      // vertex texCoord
         vertexCount = 0;
-        int normalCount = 0;
-        int texCoordCount = 0;
+        normalCount = 0;
+        texCoordCount = 0;
         indexCount = 0;
 
         float sectorStep = 2 * M_PI / sectorCount;
@@ -75,8 +77,8 @@ struct Sphere {
                 normals[normalCount++] = nz;
 
                 // vertex tex coord (s, t) range between [0, 1]
-                s = (float)j / sectorCount;
-                t = (float)i / stackCount;
+                s = (float)j / (float)sectorCount;
+                t = (float)i / (float)stackCount;
                 texCoords[texCoordCount++] = s;
                 texCoords[texCoordCount++] = t;
             }
@@ -139,6 +141,14 @@ struct Sphere {
     unsigned int getIndexCount() {
         return indexCount;
     }
+
+    // Function to get the texture coordinate count
+    unsigned int getTexCoordCount() {
+        return texCoordCount;
+    }
+
+
+
 };
 
 #endif // SPHERE_H
