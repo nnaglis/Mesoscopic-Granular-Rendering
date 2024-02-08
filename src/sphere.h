@@ -103,12 +103,12 @@ struct Sphere {
     }
 
     // Destructor
-    ~Sphere() {
-        delete[] vertices;
-        delete[] normals;
-        delete[] texCoords;
-        delete[] indices;
-    }
+//    ~Sphere() {
+//        delete[] vertices;
+//        delete[] normals;
+//        delete[] texCoords;
+//        delete[] indices;
+//    }
 
     // Function to get the vertices
     float* getVertices() {

@@ -1,2 +1,3 @@
 # do not include .o files
-.o
+*.o
+*.DS_Store
