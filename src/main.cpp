@@ -7,6 +7,10 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "libraries/stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "libraries/stb_image_write.h"
+
+
 
 
 #include <glm/glm.hpp>
@@ -14,8 +18,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 // window size
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+unsigned int SCR_WIDTH = 300;
+unsigned int SCR_HEIGHT = 300;
 
 // FPS counter
 double lastTime = glfwGetTime();
@@ -31,6 +35,12 @@ float fov = 90.0f;
 // Near and Far clipping planes
 float nearPlane = 0.1f;
 float farPlane = 100.0f;
+
+// point light
+glm::vec3 pointLightPos = glm::vec3(0.8f, 0.8f, 1.0f);
+
+// pixels
+unsigned char *pixels;
 
 
 // MVP matrices
@@ -67,12 +77,17 @@ unsigned int planeVAO, planeVBO, planeEBO, planeTBO, planeTexture;
 // MVP matrix locations
 unsigned int modelMatrixLoc, viewMatrixLoc, projectionMatrixLoc;
 
+// light position location
+unsigned int lightPosLoc;
+
 
 // Registering a callback function that gets called each time the window is resized.
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     {
         glViewport(0, 0, width, height);
     // Calculate new aspect ratio
+    SCR_HEIGHT = height;
+    SCR_WIDTH = width;
     float aspectRatio = (float)width / (float)height;
 
     projectionMatrix  = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
@@ -85,6 +100,9 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 void CalculateFrameRate(GLFWwindow* window);
 void key_callback(GLFWwindow* window);
 unsigned int loadTexture(const char *path);
+void RayTracing();
+glm::vec3 calculateDirection(int& x, int& y);
+bool intersectsSphere(glm::vec3& rayOrigin, glm::vec3& rayDirection, glm::vec3& sphereCenter, float& sphereRadius);
 // void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
 
@@ -277,6 +295,10 @@ int main(void)
     modelMatrixLoc = glGetUniformLocation(ourShader.ID, "modelMatrix");
     viewMatrixLoc = glGetUniformLocation(ourShader.ID, "viewMatrix");
     projectionMatrixLoc = glGetUniformLocation(ourShader.ID, "projectionMatrix");
+    lightPosLoc = glGetUniformLocation(ourShader.ID, "lightPos");
+
+    // Set the light position
+    glUniform3fv(lightPosLoc, 1, glm::value_ptr(pointLightPos));
 
     /* Loop until the user closes the window */
 
@@ -301,6 +323,9 @@ int main(void)
             renderPlane();
     
 
+        // Let's do some Ray Tracing!
+        RayTracing();
+
         //check for key input
         key_callback(window);
         //adjust point size
@@ -320,6 +345,8 @@ int main(void)
 
         CalculateFrameRate(window);
     }
+    // stbi_flip_vertically_on_write(true);
+    // stbi_write_png("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL_Xcode/bin/output_pre.png", SCR_WIDTH*2, SCR_HEIGHT*2, 4, pixels, SCR_WIDTH * 4);
 
     glfwTerminate();
     return 0;
@@ -366,4 +393,89 @@ cameraPos.z = radius * cos(verticalAngle) * cos(horizontalAngle);
 
 // Update the view matrix
 viewMatrix = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+}
+
+
+void RayTracing()
+{
+    // Let's do some Ray Tracing!
+    unsigned char *pixels = new unsigned char[SCR_WIDTH * SCR_HEIGHT * 4];  // RGBA format
+    glReadPixels(0, 0, SCR_WIDTH, SCR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    // Save the image to a file
+    // stbi_flip_vertically_on_write(true);
+    // stbi_write_png("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL_Xcode/bin/output_pre.png", SCR_WIDTH*2, SCR_HEIGHT*2, 4, pixels, SCR_WIDTH * 4);
+    
+
+    // loop through each pixel in two nested loops
+    //for
+        //for
+    glm::vec3 rayOrigin = cameraPos;
+    glm::vec3 sphereCenter = glm::vec3(0.0f, sphere.radius, 0.0f);
+    for (int i = 0; i < SCR_HEIGHT; i++)
+    {
+        for (int j = 0; j < SCR_WIDTH; j++)
+        {
+            glm::vec3 rayDirection = calculateDirection(j, i);
+            
+            // check if the ray intersects the sphere
+            if (intersectsSphere(rayOrigin,rayDirection,sphereCenter,sphere.radius))
+            {
+                // set the pixel to red
+                pixels[i * SCR_WIDTH * 4 + j * 4] = 255;
+                pixels[i * SCR_WIDTH * 4 + j * 4 + 1] = 0;
+                pixels[i * SCR_WIDTH * 4 + j * 4 + 2] = 0;
+                pixels[i * SCR_WIDTH * 4 + j * 4 + 3] = 255;
+            }
+
+        }
+    }
+    //output the image on the screen
+    // glDrawPixels(SCR_WIDTH, SCR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    // Save the image to a file
+    stbi_flip_vertically_on_write(true);
+    stbi_write_png("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL_Xcode/bin/output.png", SCR_WIDTH, SCR_HEIGHT, 4, pixels, SCR_WIDTH * 4);
+}
+
+glm::vec3 calculateDirection(int& x, int& y)
+{
+    // Calculating normalized device coordinates (-1 to 1)
+    float xNDC = (2.0f * x) / SCR_WIDTH - 1.0f;
+    float yNDC = 1.0f - (2.0f * y) / SCR_HEIGHT;
+    float zNDC = 1.0f;
+    glm::vec3 rayNDC = glm::vec3(xNDC, yNDC, zNDC);
+    // 
+    glm::vec4 rayClip = glm::vec4(rayNDC.x, rayNDC.y, -1.0, 1.0);
+    // Calculate the ray in world space
+    glm::vec4 rayEye = glm::inverse(projectionMatrix) * rayClip;
+    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0, 0.0);
+    glm::vec3 rayWorld = glm::vec3(glm::inverse(viewMatrix) * rayEye);
+    rayWorld = glm::normalize(rayWorld);
+    return rayWorld;
+}
+
+bool intersectsSphere(glm::vec3& rayOrigin, glm::vec3& rayDirection, glm::vec3& sphereCenter, float& sphereRadius)
+{
+    // define t 
+    int a = dot(rayDirection, rayDirection);
+    int b = 2 * dot(rayDirection, rayOrigin - sphereCenter);
+    int c = dot(rayOrigin - sphereCenter, rayOrigin - sphereCenter) - sphereRadius * sphereRadius;
+
+    int discriminant = b * b - 4 * a * c;
+    if (discriminant < 0)
+    {
+        return false;
+    }
+    else
+    {
+        float t1 = (-b - sqrt(discriminant)) / (2 * a);
+        float t2 = (-b + sqrt(discriminant)) / (2 * a);
+        if (t1 < 0 && t2 < 0)
+        {
+            return false;
+        }
+        else
+        {
+            return true;
+        }
+    }
 }
