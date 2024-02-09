@@ -51,7 +51,7 @@ glm::mat4 projectionMatrix = glm::perspective(glm::radians(fov), (float)SCR_WIDT
 
 // TEST VERTICES
 //create sphere
-Sphere sphere(1.5f, 30, 30);
+Sphere sphere(2.5f, 30, 30);
 float planePositions[] = {
     1.0f,  0.0f, 1.0f,
     1.0f,  0.0f, -1.0f,
@@ -431,40 +431,27 @@ void RayTracing()
                 //calculate the normal
                 glm::vec3 normal = glm::normalize(intersectionPoint - sphereCenter);
                 //calculate the light direction
-                //SUPPOSED TO BE 
+                //TODO SUPPOSED TO BE 
                 // glm::vec3 lightDirection = glm::normalize(pointLightPos - intersectionPoint);
                 glm::vec3 lightDirection = glm::normalize(pointLightPos + intersectionPoint);
                 //calculate the diffuse component
                 float diffuse = fmax(0.0f, glm::dot(normal, lightDirection));
-                std::cout << "diffuse: " << diffuse << std::endl;
+                // std::cout << "diffuse: " << diffuse << std::endl;
                 // float diffuse = glm::dot(normal, lightDirection)*2.0f;
 
                 // //calculate the specular component
-                // glm::vec3 viewDirection = glm::normalize(-rayDirection);
-                // glm::vec3 reflectDirection = glm::reflect(-lightDirection, normal);
-                // float specular = pow(fmax(0.0f, glm::dot(viewDirection, reflectDirection)), 32);
+                glm::vec3 viewDirection = glm::normalize(-rayDirection);
+                glm::vec3 reflectDirection = glm::reflect(-lightDirection, normal);
+                float specular = pow(fmax(0.0f, glm::dot(viewDirection, reflectDirection)), 32);
                 //calculate the color
-                // glm::vec3 color = glm::vec3(1.0f, 0.2f, 0.2f) * (diffuse + specular);
-                glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f)*diffuse;
-
-                if (diffuse > 0.0f)
-                {
-                    std:: cout << "diffuse: " << diffuse << std::endl;
-                }
+                glm::vec3 color = glm::vec3(0.9f, 0.9f, 0.9f) * (diffuse + specular);
+                // glm::vec3 color = glm::vec3(0.5f, 0.5f, 0.5f)*diffuse;
 
                 //set the pixel to the color
-                pixels[i * SCR_WIDTH * 4 + j * 4] *= diffuse;
-                pixels[i * SCR_WIDTH * 4 + j * 4 + 1] *= diffuse;
-                pixels[i * SCR_WIDTH * 4 + j * 4 + 2] *= 0;
+                pixels[i * SCR_WIDTH * 4 + j * 4] *= color.x;
+                pixels[i * SCR_WIDTH * 4 + j * 4 + 1] *= color.y;
+                pixels[i * SCR_WIDTH * 4 + j * 4 + 2] *= color.z;
                 pixels[i * SCR_WIDTH * 4 + j * 4 + 3] = 255;
-                
-                
-                
-
-                
-                
-
-
             }
 
         }
