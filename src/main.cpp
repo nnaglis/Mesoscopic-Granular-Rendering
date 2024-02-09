@@ -37,7 +37,7 @@ float nearPlane = 0.1f;
 float farPlane = 100.0f;
 
 // point light
-glm::vec3 pointLightPos = glm::vec3(0.8f, 0.8f, 1.0f);
+glm::vec3 pointLightPos = glm::vec3(1.0f, 1.0f, 0.0f);
 
 // pixels
 unsigned char *pixels;
@@ -102,7 +102,7 @@ void key_callback(GLFWwindow* window);
 unsigned int loadTexture(const char *path);
 void RayTracing();
 glm::vec3 calculateDirection(int& x, int& y);
-bool intersectsSphere(glm::vec3& rayOrigin, glm::vec3& rayDirection, glm::vec3& sphereCenter, float& sphereRadius);
+bool intersectsSphere(glm::vec3& rayOrigin, glm::vec3& rayDirection, glm::vec3& sphereCenter, float& sphereRadius, float& t);
 // void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
 
@@ -181,7 +181,7 @@ void setupSphere() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(1);  // Texture coordinates
 
-    sphereTexture = loadTexture("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL_Xcode/resources/textures/container.jpg");
+    sphereTexture = loadTexture("/Users/naglisnaslenas/Documents/DTU/Thesis/code/Refference/LearnOpenGL_Xcode/resources/textures/006242_1200x.jpg");
 
     // Unbind the VAO
     glBindVertexArray(0);
@@ -416,15 +416,55 @@ void RayTracing()
         for (int j = 0; j < SCR_WIDTH; j++)
         {
             glm::vec3 rayDirection = calculateDirection(j, i);
-            
+            float t = 0.0f;
             // check if the ray intersects the sphere
-            if (intersectsSphere(rayOrigin,rayDirection,sphereCenter,sphere.radius))
+            if (intersectsSphere(rayOrigin,rayDirection,sphereCenter,sphere.radius,t))
             {
-                // set the pixel to red
-                pixels[i * SCR_WIDTH * 4 + j * 4] = 255;
-                pixels[i * SCR_WIDTH * 4 + j * 4 + 1] = 0;
-                pixels[i * SCR_WIDTH * 4 + j * 4 + 2] = 0;
+                // // set the pixel to red
+                // pixels[i * SCR_WIDTH * 4 + j * 4] = 255;
+                // pixels[i * SCR_WIDTH * 4 + j * 4 + 1] = 0;
+                // pixels[i * SCR_WIDTH * 4 + j * 4 + 2] = 0;
+                // pixels[i * SCR_WIDTH * 4 + j * 4 + 3] = 255;
+                
+                //calculate the intersection point
+                glm::vec3 intersectionPoint = rayOrigin + t * rayDirection;
+                //calculate the normal
+                glm::vec3 normal = glm::normalize(intersectionPoint - sphereCenter);
+                //calculate the light direction
+                //SUPPOSED TO BE 
+                // glm::vec3 lightDirection = glm::normalize(pointLightPos - intersectionPoint);
+                glm::vec3 lightDirection = glm::normalize(pointLightPos + intersectionPoint);
+                //calculate the diffuse component
+                float diffuse = fmax(0.0f, glm::dot(normal, lightDirection));
+                std::cout << "diffuse: " << diffuse << std::endl;
+                // float diffuse = glm::dot(normal, lightDirection)*2.0f;
+
+                // //calculate the specular component
+                // glm::vec3 viewDirection = glm::normalize(-rayDirection);
+                // glm::vec3 reflectDirection = glm::reflect(-lightDirection, normal);
+                // float specular = pow(fmax(0.0f, glm::dot(viewDirection, reflectDirection)), 32);
+                //calculate the color
+                // glm::vec3 color = glm::vec3(1.0f, 0.2f, 0.2f) * (diffuse + specular);
+                glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f)*diffuse;
+
+                if (diffuse > 0.0f)
+                {
+                    std:: cout << "diffuse: " << diffuse << std::endl;
+                }
+
+                //set the pixel to the color
+                pixels[i * SCR_WIDTH * 4 + j * 4] *= diffuse;
+                pixels[i * SCR_WIDTH * 4 + j * 4 + 1] *= diffuse;
+                pixels[i * SCR_WIDTH * 4 + j * 4 + 2] *= 0;
                 pixels[i * SCR_WIDTH * 4 + j * 4 + 3] = 255;
+                
+                
+                
+
+                
+                
+
+
             }
 
         }
@@ -440,7 +480,9 @@ glm::vec3 calculateDirection(int& x, int& y)
 {
     // Calculating normalized device coordinates (-1 to 1)
     float xNDC = (2.0f * x) / SCR_WIDTH - 1.0f;
-    float yNDC = 1.0f - (2.0f * y) / SCR_HEIGHT;
+    float yNDC = (2.0f * (SCR_HEIGHT - y)) / SCR_HEIGHT - 1.0f;
+    //????? i need to flip the yNDC
+    yNDC = -yNDC;
     float zNDC = 1.0f;
     glm::vec3 rayNDC = glm::vec3(xNDC, yNDC, zNDC);
     // 
@@ -453,14 +495,14 @@ glm::vec3 calculateDirection(int& x, int& y)
     return rayWorld;
 }
 
-bool intersectsSphere(glm::vec3& rayOrigin, glm::vec3& rayDirection, glm::vec3& sphereCenter, float& sphereRadius)
+bool intersectsSphere(glm::vec3& rayOrigin, glm::vec3& rayDirection, glm::vec3& sphereCenter, float& sphereRadius, float& t)
 {
     // define t 
-    int a = dot(rayDirection, rayDirection);
-    int b = 2 * dot(rayDirection, rayOrigin - sphereCenter);
-    int c = dot(rayOrigin - sphereCenter, rayOrigin - sphereCenter) - sphereRadius * sphereRadius;
+    float a = dot(rayDirection, rayDirection);
+    float b = 2 * dot(rayDirection, rayOrigin - sphereCenter);
+    float c = dot(rayOrigin - sphereCenter, rayOrigin - sphereCenter) - sphereRadius * sphereRadius;
 
-    int discriminant = b * b - 4 * a * c;
+    float discriminant = b * b - 4 * a * c;
     if (discriminant < 0)
     {
         return false;
@@ -469,13 +511,25 @@ bool intersectsSphere(glm::vec3& rayOrigin, glm::vec3& rayDirection, glm::vec3& 
     {
         float t1 = (-b - sqrt(discriminant)) / (2 * a);
         float t2 = (-b + sqrt(discriminant)) / (2 * a);
-        if (t1 < 0 && t2 < 0)
+        if (t1 >= 0 && t2 >= 0)
         {
-            return false;
+            t = fmin(t1, t2);
+            return true;
+        }
+        else if (t1 >= 0)
+        {
+            t = t1;
+            return true;
+        }
+        else if (t2 >= 0)
+        {
+            t = t2;
+            return true;
         }
         else
         {
-            return true;
+            return false;
         }
+        return false;
     }
 }
