@@ -1,9 +1,0 @@
-OpenGL version: 4.1 Metal - 88
-ERROR::SHADER_COMPILATION_ERROR of type: FRAGMENT
-ERROR: 0:7: Use of undeclared identifier 'gl_Position'
-
- -- --------------------------------------------------- -- 
-ERROR::PROGRAM_LINKING_ERROR of type: PROGRAM
-ERROR: One or more attached shaders not successfully compiled
-
- -- --------------------------------------------------- -- 
