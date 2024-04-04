@@ -35,7 +35,7 @@ float nearPlane = 0.1f;
 float farPlane = 10000.0f;
 
 //light direction
-glm::vec3 lightDir = glm::vec3(-0.4196f,-0.1049f,-0.9000f);
+glm::vec3 lightDir = glm::vec3(0.4196f,0.1049f,0.9000f);
 
 
 // MVP matrices
@@ -305,6 +305,9 @@ int main(void)
         glm::mat4 model = glm::mat4(1.0f); // start with an identity matrix
     // model = glm::scale(model, glm::vec3(200.0f, 1.0f, 200.0f)); // apply scaling
     ourShader.setMat4("model", model);
+    ourShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
+    ourShader.setVec3("lightPos", lightDir);
+    ourShader.setVec3("eyePos", cameraPos);
     // glBindVertexArray(planeVAO);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, planeTexture);

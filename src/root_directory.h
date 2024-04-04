@@ -1,1 +1,1 @@
-const char * logl_root = "/Users/naglisnaslenas/Documents/DTU/Thesis/code/OpenGL/LearnOpenGL-Pre-RT/";
+const char * logl_root = "/Users/naglisnaslenas/Documents/DTU/Thesis/code/OpenGL/LearnOpenGL_Xcode/";
