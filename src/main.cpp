@@ -35,7 +35,7 @@ float nearPlane = 0.1f;
 float farPlane = 10000.0f;
 
 //light direction
-glm::vec3 lightDir = glm::vec3(0.4196f,0.1049f,0.9000f);
+glm::vec3 lightDir = glm::vec3(-1.0f,-0.1f,-0.0f);
 
 
 // MVP matrices
@@ -277,7 +277,7 @@ int main(void)
 
     // load models
     // -----------
-    Model ourModel(FileSystem::getPath("resources/objects/smooth_grain4.obj"));
+    Model ourModel(FileSystem::getPath("resources/objects/simple_sand.obj"));
 
     /* Loop until the user closes the window */
 
@@ -292,7 +292,7 @@ int main(void)
 
 
         /* Render here */
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // Drawing the sphere
@@ -306,7 +306,7 @@ int main(void)
     // model = glm::scale(model, glm::vec3(200.0f, 1.0f, 200.0f)); // apply scaling
     ourShader.setMat4("model", model);
     ourShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-    ourShader.setVec3("lightPos", lightDir);
+    ourShader.setVec3("lightDir", normalize(lightDir));
     ourShader.setVec3("eyePos", cameraPos);
     // glBindVertexArray(planeVAO);
     glActiveTexture(GL_TEXTURE0);
