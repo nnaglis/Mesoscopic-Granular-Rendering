@@ -89,17 +89,12 @@ void main()
     float Rp_2 = Rp(cos_incident_2, n_glass, 1.0);
     float Fr_2 = 0.5 * (abs(Rs_2 * Rs_2) + abs(Rp_2 * Rp_2));
     float Ft_2 = 1.0 - Fr_2;
-    // adjusting for it being from inside to outside
-    // TODO IS THIS CORRECT?
-    Ft_2 = 1.0 - Ft_2;
 
     float F = Ft_1 * Ft_2;
     //single scattering term
-    vec3 Fr_final = albedo * F * hgPhaseFunction(normalize(lightDir), viewDir) / ( abs(dot(-Fnormal, normalize(lightDir))) + abs(dot(-Fnormal, viewDir)) );
+    vec3 single_scattering = albedo * F * hgPhaseFunction(normalize(lightDir), viewDir) / ( abs(dot(-Fnormal, normalize(lightDir))) + abs(dot(-Fnormal, viewDir)) );
 
-    Fr_final = Fr_final + F*Rd/PI;
-    // TODO Do i need to force the Fresnel term to be positive?
-    Fr_final = max(Fr_final, 0.0);
+    vec3 BSSRDF = single_scattering + F*Rd/PI;
 
     // vec3 baseColor = vec3(1.0, 0.546, 0.371);
     vec3 baseColor = vec3(1.0, 0.803, 0.705);
@@ -109,15 +104,18 @@ void main()
     float diffuse = max(dot(Fnormal, lightDir), 0.0);
 
     //ambient lighting
-    float ambient = 0.1;
+    float ambient = 0.2;
 
     //specular lighting
     float specularStrength = 0.8;
     vec3 reflectDir = reflect(-lightDir, Fnormal);
     float specular = pow(max(dot(viewDir, reflectDir), 0.0), 32);
 
-    vec3 result = Fr_final+ (specular+diffuse+ambient)* vec3(1.0, 0.803, 0.705);
-    // vec3 result = Fr_final;
-
+    // vec3 result = Fr_final+ (specular+diffuse+ambient)* vec3(1.0, 0.803, 0.705);
+    vec3 result = vec3(diffuse);
+    // vec3 result = vec3(texture(tex, TexCoords).r);
+    // float result = texture(tex, TexCoords).r;
+    // result += 0.1;
+    // vec3 result2 = vec3(result);
     FragColor = vec4(result, 1.0);
 }

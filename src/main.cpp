@@ -10,14 +10,17 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "libraries/stb_image.h"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "libraries/stb_image_write.h"
+
 
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 // window size
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+unsigned int SCR_WIDTH = 800;
+unsigned int SCR_HEIGHT = 600;
 
 // FPS counter
 double lastTime = glfwGetTime();
@@ -25,17 +28,19 @@ int nbFrames = 0;
 
 // Camera
 float radius = 8.0f;
-float verticalAngle = 0.5f;
+float verticalAngle = 0.0f;
 float horizontalAngle = 0.0f;
 float cameraSpeed = 0.03f; // camera speed per frame
 glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, radius);
 float fov = 60.0f;
 // Near and Far clipping planes
 float nearPlane = 0.1f;
-float farPlane = 10000.0f;
+float farPlane = 10.0f;
+
+GLuint FramebufferName = 0;
 
 //light direction
-glm::vec3 lightDir = glm::vec3(-1.0f,-0.1f,-0.0f);
+glm::vec3 lightDir = glm::vec3(-1.0f,-1.0f,-0.0f);
 
 
 // MVP matrices
@@ -79,6 +84,9 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     float aspectRatio = (float)width / (float)height;
 
     projectionMatrix  = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
+    SCR_HEIGHT = height;
+    SCR_WIDTH = width;
+    
     // // Update the VBO with the new vertex data
     // glBindBuffer(GL_ARRAY_BUFFER, VBO);
     // glBufferData(GL_ARRAY_BUFFER, sizeof(float) * sphere.getVertexCount(), sphere.getVertices(), GL_STATIC_DRAW);
@@ -263,6 +271,7 @@ int main(void)
     // Registering the callback function on window resize to make sure OpenGL renders the image in the right size whenever the window is resized.
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     Shader ourShader(FileSystem::getPath("src/shaders/vertexShader.vs").c_str(), FileSystem::getPath("src/shaders/fragmentShader.fs").c_str());
+    Shader FBOShader(FileSystem::getPath("src/shaders/FBOvertexShader2.vs").c_str(), FileSystem::getPath("src/shaders/FBOfragmentShader2.fs").c_str());
     
 
     
@@ -277,24 +286,82 @@ int main(void)
 
     // load models
     // -----------
-    Model ourModel(FileSystem::getPath("resources/objects/simple_sand.obj"));
+    Model ourModel(FileSystem::getPath("resources/objects/grain_sphere.obj"));
 
     /* Loop until the user closes the window */
+
+    // // The framebuffer, which regroups 0, 1, or more textures, and 0 or 1 depth buffer.
+    
+    glGenFramebuffers(1, &FramebufferName);
+    glBindFramebuffer(GL_FRAMEBUFFER, FramebufferName);
+
+    // Depth texture. Slower than a depth buffer, but you can sample it later in your shader
+    GLuint depthTexture;
+    glGenTextures(1, &depthTexture);
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0,GL_DEPTH_COMPONENT16, 800, 600, 0,GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthTexture, 0);
+
+    glDrawBuffer(GL_NONE); // No color buffer is drawn to.
+
+    // Always check that our framebuffer is ok
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    return 0;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // The render loop
     while (!glfwWindowShouldClose(window))
     {
+        // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // glBindFramebuffer(GL_FRAMEBUFFER, FramebufferName);
+        // FBOShader.use();
+        // //maybe?
+        // glViewport(0, 0, 800, 600);
+
+        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // // Drawing the model
+        // glm::mat4 model = glm::mat4(1.0f); // start with an identity matrix
+        // glm::mat4 lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, nearPlane, farPlane);
+        // glm::mat4 lightView = glm::lookAt(lightDir, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        // glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+        // FBOShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        // FBOShader.setMat4("model", model);
+
+        // ourModel.Draw(FBOShader);
+        // glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // glActiveTexture(GL_TEXTURE0);
+        // glBindTexture(GL_TEXTURE_2D, depthTexture);
+
+        // GLfloat* pixels_float = new GLfloat[800 * 600]; // Assuming width and height are the dimensions of the texture
+        // unsigned char* pixels = new unsigned char[800 * 600];
+        // glGetTexImage(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT, pixels_float);
+        // for (int i = 0; i < 800 * 600; i++)
+        // {
+        //     // cout << pixels_float[i] << " ";
+        //     pixels[i] = static_cast<unsigned char>(pixels_float[i] * 255.0f);
+        // }
+
+        // // Save texture data to PNG using stb_image_write library
+        // stbi_write_png("depthTexture.png", 800, 600, 1, pixels, 0);
+
+        /* Render here */
+        // glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+        
+        ourShader.use();
+        // glViewport(0, 0, 800, 600);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         // MVP matrices to be used in the vertex shader
         ourShader.setMat4("projection", projectionMatrix);
         ourShader.setMat4("view", viewMatrix);
-
-
-
-
-        /* Render here */
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+        
         // Drawing the sphere
             // renderSphere();
 
@@ -304,15 +371,15 @@ int main(void)
         // Drawing the model
         glm::mat4 model = glm::mat4(1.0f); // start with an identity matrix
     // model = glm::scale(model, glm::vec3(200.0f, 1.0f, 200.0f)); // apply scaling
-    ourShader.setMat4("model", model);
-    ourShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-    ourShader.setVec3("lightDir", normalize(lightDir));
-    ourShader.setVec3("eyePos", cameraPos);
-    // glBindVertexArray(planeVAO);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, planeTexture);
+        ourShader.setMat4("model", model);
+        ourShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
+        ourShader.setVec3("lightDir", normalize(lightDir));
+        ourShader.setVec3("eyePos", cameraPos);
+        // glBindVertexArray(planeVAO);
+        // glActiveTexture(GL_TEXTURE0);
+        // glBindTexture(GL_TEXTURE_2D, planeTexture);
         ourModel.Draw(ourShader);
-    
+
 
         //check for key input
         key_callback(window);
