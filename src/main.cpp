@@ -12,6 +12,8 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "libraries/stb_image_write.h"
+#define TINYEXR_IMPLEMENTATION
+#include "libraries/tinyexr/tinyexr.h"
 
 
 #include <glm/glm.hpp>
@@ -19,8 +21,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 // window size
-unsigned int SCR_WIDTH = 800;
-unsigned int SCR_HEIGHT = 600;
+unsigned int SCR_WIDTH = 1000;
+unsigned int SCR_HEIGHT = 1000;
 
 // FPS counter
 double lastTime = glfwGetTime();
@@ -35,9 +37,15 @@ glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, radius);
 float fov = 60.0f;
 // Near and Far clipping planes
 float nearPlane = 0.1f;
-float farPlane = 10.0f;
+float farPlane = 100.0f;
 
-GLuint FramebufferName = 0;
+// Framebuffers
+GLuint FramebufferName;
+GLuint hdrFBO;
+GLuint colorBuffer;
+
+//for testing
+bool DoOnce = true;
 
 //light direction
 glm::vec3 lightDir = glm::vec3(-1.0f,-1.0f,-0.0f);
@@ -49,30 +57,133 @@ glm::mat4 viewMatrix = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::
 glm::mat4 projectionMatrix = glm::perspective(glm::radians(fov), (float)SCR_WIDTH/(float)SCR_HEIGHT, nearPlane, farPlane); // Calculate projection matrix
 
 
-// TEST VERTICES
-//create sphere
-Sphere sphere(1.5f, 30, 30);
-float planePositions[] = {
-    1.0f,  0.0f, 1.0f,
-    1.0f,  0.0f, -1.0f,
-    -1.0f, 0.0f, -1.0f,
-    -1.0f, 0.0f, 1.0f
-};
 
-float planeTextureCoords[] = {
-    1.0f, 1.0f,
-    1.0f, 0.0f,
-    0.0f, 0.0f,
-    0.0f, 1.0f
-};
+// set up color buffer for HDR rendering
+void setupColorBuffer()
+{
+    glGenFramebuffers(1, &hdrFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
 
-unsigned int planeIndices[] = {
-    0, 1, 3,
-    1, 2, 3
-};
+    glGenTextures(1, &colorBuffer);
+    glBindTexture(GL_TEXTURE_2D, colorBuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffer, 0);
+    
 
-unsigned int sphereVAO, sphereVBO, sphereEBO, sphereTBO, sphereTexture;
-unsigned int planeVAO, planeVBO, planeEBO, planeTBO, planeTexture;
+    // set up depth buffer
+    // create and bind a renderbuffer object for depth and stencil attachment
+    GLuint rbo;
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    // check for framebuffer completeness
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "Framebuffer not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void rendertoHDR(Shader &shader, Model &model)
+{
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        shader.use();
+        // MVP matrices to be used in the vertex shader
+        shader.setMat4("projection", projectionMatrix);
+        shader.setMat4("view", viewMatrix);
+        // set model matrix to identity matrix
+        glm::mat4 modelMatrix = glm::mat4(1.0f);
+        shader.setMat4("model", modelMatrix);
+        shader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(modelMatrix))));
+        // light properties
+        shader.setVec3("lightDir", lightDir);
+        shader.setVec3("eyePos", cameraPos);
+        // draw object
+        model.Draw(shader);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+// use tinyexr to save HDR image
+// modified from tinyexr/examples/rgbe2exr/rgbe2exr.cc
+void saveHDRImage(const char *filename, const float *colorBuffer)
+{
+    EXRHeader header;
+    InitEXRHeader(&header);
+    EXRImage image;
+    InitEXRImage(&image);
+
+    image.num_channels = 3;
+
+    std::vector<float> images[3];
+    images[0].resize(SCR_WIDTH * SCR_HEIGHT);
+    images[1].resize(SCR_WIDTH * SCR_HEIGHT);
+    images[2].resize(SCR_WIDTH * SCR_HEIGHT);
+
+    // Split RGBRGBRGB... into R, G and B layer
+        // and flip image vertically
+    for (size_t y = 0; y < SCR_HEIGHT; y++)
+{
+    for (size_t x = 0; x < SCR_WIDTH; x++)
+    {
+        size_t flipped_index = (SCR_HEIGHT - y - 1) * SCR_WIDTH + x;
+        size_t original_index = y * SCR_WIDTH + x;
+
+        images[0][flipped_index] = colorBuffer[3 * original_index + 0];
+        images[1][flipped_index] = colorBuffer[3 * original_index + 1];
+        images[2][flipped_index] = colorBuffer[3 * original_index + 2];
+    }
+}
+
+    float *image_ptr[3];
+    image_ptr[0] = &(images[2].at(0)); // B
+    image_ptr[1] = &(images[1].at(0)); // G
+    image_ptr[2] = &(images[0].at(0)); // R
+
+    image.images = (unsigned char **)image_ptr;
+    image.width = SCR_WIDTH;
+    image.height = SCR_HEIGHT;
+
+    header.num_channels = 3;
+    header.channels = (EXRChannelInfo *)malloc(sizeof(EXRChannelInfo) * header.num_channels);
+    // Must be (A)BGR order, since most of EXR viewers expect this channel order.
+    strncpy(header.channels[0].name, "B", 255);
+    header.channels[0].name[strlen("B")] = '\0';
+    strncpy(header.channels[1].name, "G", 255);
+    header.channels[1].name[strlen("G")] = '\0';
+    strncpy(header.channels[2].name, "R", 255);
+    header.channels[2].name[strlen("R")] = '\0';
+
+    header.pixel_types = (int *)malloc(sizeof(int) * header.num_channels);
+    header.requested_pixel_types = (int *)malloc(sizeof(int) * header.num_channels);
+    for (int i = 0; i < header.num_channels; i++)
+    {
+        header.pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT; // pixel
+        header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;
+    }
+
+    const char *err;
+    int ret = SaveEXRImageToFile(&image, &header, filename, &err);
+    if (ret != TINYEXR_SUCCESS)
+    {
+        fprintf(stderr, "Save EXR err: %s\n", err);
+        return;
+    }
+    printf("Saved exr file. [ %s ] \n", filename);
+
+    free(header.channels);
+    free(header.pixel_types);
+    free(header.requested_pixel_types);
+}
+
+
 
 
 
@@ -86,141 +197,51 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     projectionMatrix  = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
     SCR_HEIGHT = height;
     SCR_WIDTH = width;
-    
-    // // Update the VBO with the new vertex data
-    // glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    // glBufferData(GL_ARRAY_BUFFER, sizeof(float) * sphere.getVertexCount(), sphere.getVertices(), GL_STATIC_DRAW);
+    DoOnce = true;
+    cout << "Width: " << SCR_WIDTH << " Height: " << SCR_HEIGHT << endl;
     }
 
 // function declarations
 void CalculateFrameRate(GLFWwindow* window);
 void key_callback(GLFWwindow* window);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-unsigned int loadTexture(const char *path);
+// unsigned int loadTexture(const char *path);
 // void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
 
-void setupPlane() {
-    // Generate the VAO
-    glGenVertexArrays(1, &planeVAO);
-    glBindVertexArray(planeVAO);
 
-    // Generate and set up the VBO
-    glGenBuffers(1, &planeVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, planeVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(planePositions), planePositions, GL_STATIC_DRAW);
+// unsigned int loadTexture(const char *path)
+// {
+//     unsigned int texture;
+//     glGenTextures(1, &texture);
+//     glBindTexture(GL_TEXTURE_2D, texture);
+//     // set the texture wrapping parameters
+//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// set texture wrapping to GL_REPEAT (default wrapping method)
+//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+//     // set texture filtering parameters
+//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+//     // load and generate the texture
+//     int width, height, nrChannels;
+//     unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
+//     std::cout << "Width: " << width << " Height: " << height << " nrChannels: " << nrChannels << std::endl;
+//     if (data)
+//     {
+//         // generate the texture
+//         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+//         // generate the mipmap
+//         glGenerateMipmap(GL_TEXTURE_2D);
+//     }
+//     else
+//     {
+//         std::cout << "Failed to load texture" << std::endl;
+//     }
+//     // free the image memory
+//     stbi_image_free(data);
+//     return texture;
+// }
 
-    // Specify the vertex attributes
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);  // Vertex positions
-
-    // Generate and set up the EBO
-    glGenBuffers(1, &planeEBO);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, planeEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(planeIndices), planeIndices, GL_STATIC_DRAW);
-
-    // Generate and set up the TBO
-    glGenBuffers(1, &planeTBO);
-    glBindBuffer(GL_ARRAY_BUFFER, planeTBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(planeTextureCoords), planeTextureCoords, GL_STATIC_DRAW);
-
-    // Specify the texture coordinates
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(1);  // Texture coordinates
-
-    // load texture
-    planeTexture = loadTexture(FileSystem::getPath("resources/textures/solid-grey.jpg").c_str());
-
-    // Unbind the VAO (optional)
-    glBindVertexArray(0);
-}
-
-void renderPlane() {
-    glm::mat4 model = glm::mat4(1.0f); // start with an identity matrix
-    model = glm::scale(model, glm::vec3(200.0f, 1.0f, 200.0f)); // apply scaling
-    glBindVertexArray(planeVAO);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, planeTexture);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-}
-
-
-
-void setupSphere() {
-    // Generate the VAO
-    glGenVertexArrays(1, &sphereVAO);
-    glBindVertexArray(sphereVAO);
-
-    // Generate and set up the VBO
-    glGenBuffers(1, &sphereVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float)*sphere.getVertexCount(), sphere.getVertices(), GL_STATIC_DRAW);
-
-    // Specify the vertex attributes
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);  // Vertex positions
-
-    // Generate and set up the EBO
-    glGenBuffers(1, &sphereEBO);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int)* sphere.getIndexCount(), sphere.getIndices(), GL_STATIC_DRAW);
-
-    // Generate and set up the TBO
-    glGenBuffers(1, &sphereTBO);
-    glBindBuffer(GL_ARRAY_BUFFER, sphereTBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float)*sphere.getTexCoordCount(), sphere.getTexCoords(), GL_STATIC_DRAW);
-
-    // Specify the texture coordinates
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(1);  // Texture coordinates
-
-    sphereTexture = loadTexture(FileSystem::getPath("resources/textures/container.jpg").c_str());
-
-    // Unbind the VAO
-    glBindVertexArray(0);
-}
-
-void renderSphere() {
-    glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(0.0f, sphere.radius, 0.0f)); // apply translation    glBindVertexArray(sphereVAO);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, sphereTexture);
-    // glBindTexture(GL_TEXTURE_2D, texture);
-    glDrawElements(GL_TRIANGLES, sphere.getIndexCount(), GL_UNSIGNED_INT, 0);
-    
-}
-
-
-unsigned int loadTexture(const char *path)
-{
-    unsigned int texture;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    // set the texture wrapping parameters
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// set texture wrapping to GL_REPEAT (default wrapping method)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    // set texture filtering parameters
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // load and generate the texture
-    int width, height, nrChannels;
-    unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
-    std::cout << "Width: " << width << " Height: " << height << " nrChannels: " << nrChannels << std::endl;
-    if (data)
-    {
-        // generate the texture
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-        // generate the mipmap
-        glGenerateMipmap(GL_TEXTURE_2D);
-    }
-    else
-    {
-        std::cout << "Failed to load texture" << std::endl;
-    }
-    // free the image memory
-    stbi_image_free(data);
-    return texture;
-}
+//function to 
 
 int main(void)
 {
@@ -244,7 +265,7 @@ int main(void)
     #endif
 
     /* Create a windowed mode window and its OpenGL context */
-    window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "OpenGL Reference", NULL, NULL);
+    window = glfwCreateWindow(SCR_WIDTH/2, SCR_HEIGHT/2, "OpenGL Reference", NULL, NULL);
     if (!window)
     {
         glfwTerminate();
@@ -280,9 +301,9 @@ int main(void)
 
     // Enable depth test
         glEnable(GL_DEPTH_TEST);
-    
-    setupPlane();
-    setupSphere();
+        glDepthFunc(GL_LESS);
+        
+        
 
     // load models
     // -----------
@@ -315,9 +336,33 @@ int main(void)
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+    
+
+
     // The render loop
     while (!glfwWindowShouldClose(window))
     {
+        if (DoOnce)
+        {
+            setupColorBuffer();
+            // glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+            // Render to HDR buffer
+            rendertoHDR(ourShader, ourModel);
+            // Save HDR image
+            float *pixelBuffer = new float[SCR_WIDTH * SCR_HEIGHT * 3];
+            glBindTexture(GL_TEXTURE_2D, colorBuffer);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGB, GL_FLOAT, pixelBuffer);
+            // for (int i = 0; i < SCR_WIDTH * SCR_HEIGHT * 3; i++)
+            // {
+            //     cout << pixelBuffer[i] << " ";
+            // }
+            saveHDRImage(FileSystem::getPath("output/hdrOutput.exr").c_str(), pixelBuffer);
+            DoOnce = false;
+        }
+        
+
+
+
         // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         // glBindFramebuffer(GL_FRAMEBUFFER, FramebufferName);
@@ -355,30 +400,30 @@ int main(void)
         /* Render here */
         // glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
         
-        ourShader.use();
-        // glViewport(0, 0, 800, 600);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        // MVP matrices to be used in the vertex shader
-        ourShader.setMat4("projection", projectionMatrix);
-        ourShader.setMat4("view", viewMatrix);
+    //     ourShader.use();
+    //     // glViewport(0, 0, 800, 600);
+    //     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    //     // MVP matrices to be used in the vertex shader
+    //     ourShader.setMat4("projection", projectionMatrix);
+    //     ourShader.setMat4("view", viewMatrix);
         
-        // Drawing the sphere
-            // renderSphere();
+    //     // Drawing the sphere
+    //         // renderSphere();
 
-        // Drawing the plane
-            // renderPlane();
+    //     // Drawing the plane
+    //         // renderPlane();
 
-        // Drawing the model
-        glm::mat4 model = glm::mat4(1.0f); // start with an identity matrix
-    // model = glm::scale(model, glm::vec3(200.0f, 1.0f, 200.0f)); // apply scaling
-        ourShader.setMat4("model", model);
-        ourShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-        ourShader.setVec3("lightDir", normalize(lightDir));
-        ourShader.setVec3("eyePos", cameraPos);
-        // glBindVertexArray(planeVAO);
-        // glActiveTexture(GL_TEXTURE0);
-        // glBindTexture(GL_TEXTURE_2D, planeTexture);
-        ourModel.Draw(ourShader);
+    //     // Drawing the model
+    //     glm::mat4 model = glm::mat4(1.0f); // start with an identity matrix
+    // // model = glm::scale(model, glm::vec3(200.0f, 1.0f, 200.0f)); // apply scaling
+    //     ourShader.setMat4("model", model);
+    //     ourShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
+    //     ourShader.setVec3("lightDir", normalize(lightDir));
+    //     ourShader.setVec3("eyePos", cameraPos);
+    //     // glBindVertexArray(planeVAO);
+    //     // glActiveTexture(GL_TEXTURE0);
+    //     // glBindTexture(GL_TEXTURE_2D, planeTexture);
+    //     ourModel.Draw(ourShader);
 
 
         //check for key input
