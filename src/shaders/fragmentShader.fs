@@ -30,6 +30,12 @@ uniform float n_glass = 1.6;
 //PI
 const float PI = 3.14159265359;
 
+// roughness
+// since im using the same roughness for x and y axis, it is squared
+uniform float roughness = 0.05;
+
+
+
 // Henyey-Greenstein phase function
 float hgPhaseFunction(vec3 lightDir, vec3 viewDir) {
     float cosTheta = dot(lightDir, viewDir);
@@ -46,8 +52,32 @@ float Rp(float cosTheta, float n1, float n2) {
            (n1 * sqrt(1.0 - (n1 / n2) * (n1 / n2) * (1.0 - cosTheta * cosTheta)) + n2 * cosTheta);
 }
 
+// Trowbridge-Reitz GGX Normal Distribution Function
+float Distribution_GGX(float NdotH, float roughness)
+{
+    NdotH = max(NdotH, 0.0);
+    float a2 = roughness*roughness;
+    float NdotH2 = NdotH*NdotH;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+    return a2 / denom;
+}
+
+// Smith monodirectional shadowing-masking function (from Walter Torrance 2007 paper)
+float Geometry_Smith(float NdotV, float NdotL, float roughness)
+{
+    NdotV = max(NdotV, 0.0);
+    NdotL = max(NdotL, 0.0);
+    float a2 = roughness*roughness;
+    // G = GGX(V) * GGX(L)
+    float GGXV = 2.0 * NdotV / (NdotV + sqrt(a2 + (1.0 - a2) * NdotV * NdotV));
+    float GGXL = 2.0 * NdotL / (NdotL + sqrt(a2 + (1.0 - a2) * NdotL * NdotL));
+    return GGXV * GGXL;  
+}
+
 void main()
 {   
+
     vec3 lightDir = normalize(-lightDir);
     // diffuse reflection
     float Fdr = - 1.440 / (n_glass * n_glass) + 0.710 / n_glass + 0.668 + 0.0636 * n_glass;
@@ -101,18 +131,26 @@ void main()
 
 
     //diffuse lighting
-    float diffuse = max(dot(Fnormal, lightDir), 0.0);
+    float diffuse = max(dot(Fnormal, lightDir)* 1/PI, 0.0);
 
     //ambient lighting
     float ambient = 0.2;
 
     //specular lighting
     float specularStrength = 0.8;
-    vec3 reflectDir = reflect(-lightDir, Fnormal);
-    float specular = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    // using the GGX normal distribution function
+    float NDF = Distribution_GGX(dot(Fnormal, halfwayDir), roughness);
+    float G = Geometry_Smith(dot(Fnormal, viewDir), dot(Fnormal, lightDir), roughness);
+    // using Blinn-Phong
+    // float specular = pow(max(dot(Fnormal, halfwayDir), 0.0), (2/(roughness*roughness)-2.0))* (1/(PI*roughness*roughness)) ;
+
+    float numerator    = NDF * G * /*F */ F;
+    float denominator = 4.0 * max(dot(Fnormal, viewDir), 0.0) * max(dot(Fnormal, lightDir), 0.0) + 0.000001; // + 0.0001 to prevent divide by zero
+    float specular = numerator / denominator;
 
     // vec3 result = Fr_final+ (specular+diffuse+ambient)* vec3(1.0, 0.803, 0.705);
-    vec3 result = vec3(diffuse);
+    vec3 result = vec3(specular);
     // vec3 result = vec3(texture(tex, TexCoords).r);
     // float result = texture(tex, TexCoords).r;
     // result += 0.1;
