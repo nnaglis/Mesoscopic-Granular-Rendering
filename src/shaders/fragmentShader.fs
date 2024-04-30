@@ -1,4 +1,5 @@
 #version 410 core
+#define MAX_LIGHTS 2
 out vec4 FragColor;
 
 in vec2 TexCoords;
@@ -7,38 +8,53 @@ in vec3 FragPos;
 
 uniform sampler2D tex;
 
-// light position
-uniform vec3 lightDir;
+// lights
+uniform int numLights;
+uniform vec3 lightDirections[MAX_LIGHTS];
+uniform vec3 lightRadiances[MAX_LIGHTS];
 
 // camera position
 uniform vec3 eyePos;
 
-
-// scattering coefficient
-uniform vec3 sigma_s = vec3(0.74, 0.88, 1.01);
-
-// absorption coefficient
-uniform vec3 sigma_a = vec3(0.032, 0.17, 0.48);
-
-
-// anisotropy parameter for the Henyey-Greenstein phase function
-uniform float g=0.0;
-
-
-uniform float n_glass = 1.6;
-
-//PI
+//PI constant
 const float PI = 3.14159265359;
 
-// roughness
-// since im using the same roughness for x and y axis, it is squared
-uniform float roughness = 0.05;
+// Predefined material properties
+uniform vec3 sigma_s = vec3(2.29, 2.39 , 1.97);
+uniform vec3 sigma_a = vec3(0.0030, 0.0034, 0.046);
+uniform float g = 0.0;
+uniform float n_material = 1.3;
+uniform float roughness = 0.1;
+uniform vec3 reflectance = vec3(1.0 , 1.0, 1.0);
 
+// Material properties
+struct MaterialProperties {
+        // scattering coefficient
+        vec3 sigma_s;
+        // absorption coefficient
+        vec3 sigma_a;
+        // albedo
+        vec3 albedo;
+        vec3 albedo_prime;
+        // anisotropy parameter for the Henyey-Greenstein phase function
+        float g;
+        // refraction coefficient of the material
+        float n;
+        // roughness
+            // since im using the same roughness for x and y axis, it is a single value
+        float roughness;
+        // amount of light that is reflected by the material
+        vec3 reflectance;
+};
+
+// TESTING VARIABLES
+    //ambient lighting
+        float ambient = 0.2;
 
 
 // Henyey-Greenstein phase function
-float hgPhaseFunction(vec3 lightDir, vec3 viewDir) {
-    float cosTheta = dot(lightDir, viewDir);
+float hgPhaseFunction(vec3 wi, vec3 wo) {
+    float cosTheta = dot(wi, wo);
     return 1.0 / (4.0 * PI) * (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cosTheta, 1.5);
 }
 
@@ -55,7 +71,7 @@ float Rp(float cosTheta, float n1, float n2) {
 // Trowbridge-Reitz GGX Normal Distribution Function
 float Distribution_GGX(float NdotH, float roughness)
 {
-    NdotH = max(NdotH, 0.0);
+    // NdotH = max(NdotH, 0.0);
     float a2 = roughness*roughness;
     float NdotH2 = NdotH*NdotH;
     float denom = (NdotH2 * (a2 - 1.0) + 1.0);
@@ -63,97 +79,183 @@ float Distribution_GGX(float NdotH, float roughness)
     return a2 / denom;
 }
 
-// Smith monodirectional shadowing-masking function (from Walter Torrance 2007 paper)
-float Geometry_Smith(float NdotV, float NdotL, float roughness)
+float lambda(float tan2theta, float roughness)
 {
-    NdotV = max(NdotV, 0.0);
-    NdotL = max(NdotL, 0.0);
-    float a2 = roughness*roughness;
-    // G = GGX(V) * GGX(L)
-    float GGXV = 2.0 * NdotV / (NdotV + sqrt(a2 + (1.0 - a2) * NdotV * NdotV));
-    float GGXL = 2.0 * NdotL / (NdotL + sqrt(a2 + (1.0 - a2) * NdotL * NdotL));
-    return GGXV * GGXL;  
+    float lambda = (sqrt(1.0 + roughness * roughness * tan2theta) - 1.0) /2;
+    return lambda;
+}
+
+float G1(vec3 w, vec3 normal, float roughness)
+{
+    float cos2theta_w = dot(w, normal) * dot(w, normal);
+    float sin2theta_w = 1.0 - cos2theta_w;
+    float tan2theta_w = sin2theta_w / cos2theta_w;
+    return 1 / (1 + lambda(tan2theta_w, roughness));
+}
+
+float G(vec3 wi, vec3 wo, vec3 normal, float roughness)
+{
+    float costheta_wi = dot(wi, normal);
+    float costheta_wo = dot(wo, normal);
+    float cos2theta_wi = costheta_wi * costheta_wi;
+    float cos2theta_wo = costheta_wo * costheta_wo;
+    float sin2theta_wi = 1.0 - cos2theta_wi;
+    float sin2theta_wo = 1.0 - cos2theta_wo;
+    float tan2theta_wi = sin2theta_wi / cos2theta_wi;
+    float tan2theta_wo = sin2theta_wo / cos2theta_wo;
+    return 1 / (1 + lambda(tan2theta_wi, roughness) + lambda(tan2theta_wo, roughness));
+}
+
+float D(vec3 w, vec3 h, vec3 normal, float roughness)
+{
+    float costheta_w = abs(dot(w, normal));
+    if (costheta_w == 0.0) return 0.0;
+    // return G1(w, roughness) / costheta_w * Distribution_GGX(dot(h, normal), roughness) * abs(dot(w, h), 0.0);
+    return Distribution_GGX(dot(h, normal), roughness);
+}
+
+// float D_PDF(vec3 w, vec3 h, vec3 normal, float roughness)
+// {
+//     float costheta_w = abs(dot(w, normal));
+//     if (costheta_w == 0.0) return 0.0;
+//     return G1(w, normal, roughness) / costheta_w * Distribution_GGX(dot(h, normal), roughness) * abs(dot(w, h));
+//     // return Distribution_GGX(dot(h, normal), roughness);
+// }
+
+vec3 DiffuseReflectance(float n, vec3 sigma_s, vec3 sigma_a, float g)
+{
+    // Diffuse fresnel reflection
+        float Fdr = - 1.440 / (n * n) + 0.710 / n + 0.668 + 0.0636 * n;
+    // Fresnel reflection
+        float A = (1.0 + Fdr) / (1.0 - Fdr);
+    // Albedo
+        vec3 sigma_t = sigma_s + sigma_a;
+        vec3 albedo = sigma_s / sigma_t;
+    // Reduced albedo
+        vec3 sigma_s_prime = ( 1.0 - g ) * sigma_s;
+        vec3 sigma_t_prime = sigma_s_prime + sigma_a;
+        vec3 albedo_prime = sigma_s_prime / sigma_t_prime;
+    // Diffuse Reflectance
+        vec3 Rd = (albedo_prime / 2.0) * (1.0 + exp(-4.0/3.0 * A * sqrt(3.0 * (1.0 - albedo_prime)))) * exp(-sqrt(3.0 * (1.0 - albedo_prime)));
+    return Rd;
+}
+
+float FresnelReflection(float n, float cosTheta)
+{
+    float Rs = Rs(cosTheta, 1.0, n);
+    float Rp = Rp(cosTheta, 1.0, n);
+    float Fr = 0.5 * (abs(Rs * Rs) + abs(Rp * Rp));
+    return Fr;
+}
+
+vec3 SingleScattering(vec3 albedo, float Fresnel, vec3 normal, vec3 wi, vec3 wo)
+{
+    vec3 single_scattering = albedo * Fresnel * hgPhaseFunction(normalize(wi), wo) / ( abs(dot(normal, normalize(wi))) + abs(dot(normal, wo)) );
+    return single_scattering;
 }
 
 void main()
 {   
+    // Creating a material instance with the predefined properties
+    MaterialProperties material;
+    material.sigma_s = sigma_s;
+    material.sigma_a = sigma_a;
+    material.g = g;
+    material.n = n_material;
+    material.roughness = roughness;
+    material.reflectance = reflectance;
 
-    vec3 lightDir = normalize(-lightDir);
-    // diffuse reflection
-    float Fdr = - 1.440 / (n_glass * n_glass) + 0.710 / n_glass + 0.668 + 0.0636 * n_glass;
-    
-    // Fresnel reflection
-    float A = (1.0 + Fdr) / (1.0 - Fdr);
-
-    // Albedo
+    // Calculating the albedo
     vec3 sigma_t = sigma_s + sigma_a;
-    vec3 albedo = sigma_s / sigma_t;
+    material.albedo = sigma_s / sigma_t;
 
-    // Reduced albedo
+    // Calculating the reduced albedo
     vec3 sigma_s_prime = ( 1.0 - g ) * sigma_s;
     vec3 sigma_t_prime = sigma_s_prime + sigma_a;
-    vec3 albedo_prime = sigma_s_prime / sigma_t_prime;
+    material.albedo_prime = sigma_s_prime / sigma_t_prime;
 
-    //
-    vec3 Rd = (albedo_prime / 2.0) * (1.0 + exp(-4.0/3.0 * A * sqrt(3.0 * (1.0 - albedo_prime)))) * exp(-sqrt(3.0 * (1.0 - albedo_prime)));
+    // Calculating the diffuse reflectance
+    vec3 DiffuseReflectance = DiffuseReflectance(material.n, material.sigma_s, material.sigma_a, material.g);
+
+    // Calculating Shading for each light
+
+    // Vec3 for the final color
+    vec3 resultFcolor = vec3(0.0);
+
+    for (int i = 0; i < (numLights); i++) {
+        vec3 lightDir = normalize(lightDirections[i]);
+        vec3 lightRadiance = lightRadiances[i];
+
+        // Defining wi and wo
+        vec3 wi = normalize(lightDir);
+        vec3 wo = normalize( eyePos - FragPos);
+        // incident angle
+        float cos_incident = dot(Fnormal, wi);
+
+        vec3 Li = lightRadiance * max(cos_incident, 0.0);
     
 
-    // s and p polarizations
-    // n1 = 1.0, n2 = 1.6
-    float cos_incident = dot(Fnormal, lightDir);
-    float Rs_1 = Rs(cos_incident, 1.0, n_glass);
-    float Rp_1 = Rp(cos_incident, 1.0, n_glass);
-    float Fr_1 = 0.5 * (abs(Rs_1 * Rs_1) + abs(Rp_1 * Rp_1));
-    float Ft_1 = 1.0 - Fr_1;
-    // Ft_1 = max(Ft_1, 0.0);
+        // Ft for in-scattering
+            
+            float Fr_1 = FresnelReflection(material.n, cos_incident);
+            float Ft_1 = 1.0 - Fr_1;
+            Ft_1 = max(Ft_1, 0.0);
+        // Ft for out-scattering
+            
+            float cos_refracted = dot(Fnormal, wo);
+            float sin_refracted = sqrt(1.0 - cos_refracted * cos_refracted);
+            //from material to air
+                float sin_incident = sin_refracted / material.n;
+                float cos_incident_2 = sqrt(1.0 - sin_incident * sin_incident);
+                float Fr_2 = FresnelReflection(1.0, cos_incident_2);
+                float Ft_2 = 1.0 - Fr_2;
+                Ft_2 = max(Ft_2, 0.0);
+        // full Fresnel term
+            float Fresnel = Ft_1 * Ft_2;  
 
-    // Ft for out-scattering
-    vec3 viewDir = normalize( eyePos - FragPos);
-    float cos_refracted = dot(Fnormal, viewDir);
-    float sin_refracted = sqrt(1.0 - cos_refracted * cos_refracted);
-    // //from glass to air
-    float sin_incident = sin_refracted / n_glass;
+        //single scattering term
+        vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo);
 
-    float cos_incident_2 = sqrt(1.0 - sin_incident * sin_incident);
-    float Rs_2 = Rs(cos_incident_2, n_glass, 1.0);
-    float Rp_2 = Rp(cos_incident_2, n_glass, 1.0);
-    float Fr_2 = 0.5 * (abs(Rs_2 * Rs_2) + abs(Rp_2 * Rp_2));
-    float Ft_2 = 1.0 - Fr_2;
+        // Full BSSRDF approximation with BRDF
+        vec3 BSSRDF = single_scattering + Fresnel*DiffuseReflectance/PI;
 
-    float F = Ft_1 * Ft_2;
-    //single scattering term
-    vec3 single_scattering = albedo * F * hgPhaseFunction(normalize(lightDir), viewDir) / ( abs(dot(-Fnormal, normalize(lightDir))) + abs(dot(-Fnormal, viewDir)) );
+        //diffuse lighting
+            // 1/PI is a normalization factor to ensure that total energy is conserved
+        vec3 diffuse = Li / PI * reflectance;
 
-    vec3 BSSRDF = single_scattering + F*Rd/PI;
+        
 
-    // vec3 baseColor = vec3(1.0, 0.546, 0.371);
-    vec3 baseColor = vec3(1.0, 0.803, 0.705);
+        // //specular lighting
+        vec3 halfwayDir = normalize(wi + wo);
+        // // using the GGX normal distribution function
+        // float NdotH = max(dot(Fnormal, halfwayDir), 0.0);
+        // float NDF = Distribution_GGX(NdotH, material.roughness);
+        // // float G = Geometry_Smith(dot(Fnormal, wo), dot(Fnormal, wi), roughness);
+        // float G = Geometry_Smith(wi, wo, roughness);
+        // // using Blinn-Phong
+        // // float specular = pow(max(dot(Fnormal, halfwayDir), 0.0), (2/(roughness*roughness)-2.0))* (1/(PI*roughness*roughness)) ;
+
+        // // float numerator    = NDF * G * /*max(Fr_1,0.0) */ 1.0;
+        // // float denominator = 4.0 * max(dot(Fnormal, wo), 0.0) * max(dot(Fnormal, wi), 0.0);
+        
+        // Normal Distribution Function
+        float D = D(wi, halfwayDir, Fnormal, roughness);
+            // PDF and it's function is Not needed
+        // float PDF = D_PDF(wi, halfwayDir, Fnormal, roughness);
+        // Geometry Shadowing Function
+        float G = G(wi, wo, Fnormal, roughness);
 
 
-    //diffuse lighting
-    float diffuse = max(dot(Fnormal, lightDir)* 1/PI, 0.0);
-
-    //ambient lighting
-    float ambient = 0.2;
-
-    //specular lighting
-    float specularStrength = 0.8;
-    vec3 halfwayDir = normalize(lightDir + viewDir);
-    // using the GGX normal distribution function
-    float NDF = Distribution_GGX(dot(Fnormal, halfwayDir), roughness);
-    float G = Geometry_Smith(dot(Fnormal, viewDir), dot(Fnormal, lightDir), roughness);
-    // using Blinn-Phong
-    // float specular = pow(max(dot(Fnormal, halfwayDir), 0.0), (2/(roughness*roughness)-2.0))* (1/(PI*roughness*roughness)) ;
-
-    float numerator    = NDF * G * /*F */ F;
-    float denominator = 4.0 * max(dot(Fnormal, viewDir), 0.0) * max(dot(Fnormal, lightDir), 0.0) + 0.000001; // + 0.0001 to prevent divide by zero
-    float specular = numerator / denominator;
-
-    // vec3 result = Fr_final+ (specular+diffuse+ambient)* vec3(1.0, 0.803, 0.705);
-    vec3 result = vec3(specular);
-    // vec3 result = vec3(texture(tex, TexCoords).r);
-    // float result = texture(tex, TexCoords).r;
-    // result += 0.1;
-    // vec3 result2 = vec3(result);
-    FragColor = vec4(result, 1.0);
+        float numerator = D*G  /* * Fresnel */;
+        float denominator = 4.0 * abs(dot(Fnormal, wo))*abs(dot(Fnormal, wi));
+        float BRDF = 0.0;
+        // Avoid division by zero
+        if(denominator != 0.0) {
+            BRDF = numerator / denominator * max(cos_incident,0.0);
+        }
+        
+        resultFcolor += BRDF*lightRadiance;
+        
+    }
+    FragColor = vec4(resultFcolor, 1.0);
 }

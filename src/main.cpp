@@ -29,12 +29,12 @@ double lastTime = glfwGetTime();
 int nbFrames = 0;
 
 // Camera
-float radius = 8.0f;
+float radius = 6.5f;
 float verticalAngle = 0.0f;
 float horizontalAngle = 0.0f;
 float cameraSpeed = 0.03f; // camera speed per frame
 glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, radius);
-float fov = 60.0f;
+float fov = 45.0f;
 // Near and Far clipping planes
 float nearPlane = 0.1f;
 float farPlane = 100.0f;
@@ -48,7 +48,14 @@ GLuint colorBuffer;
 bool DoOnce = true;
 
 //light direction
-glm::vec3 lightDir = glm::vec3(-1.0f,-1.0f,-0.0f);
+glm::vec3 lightDirections[] = {
+        glm::vec3(1.0f,  1.0f, 1.0f),
+        glm::vec3(-1.0f,  -1.0f, -3.0f),
+    };
+glm::vec3 lightRadiances[] = {
+        glm::vec3(20.0f, 20.0f, 20.0f),
+        glm::vec3(10.0f, 10.0f, 10.0f),
+    };
 
 
 // MVP matrices
@@ -103,9 +110,15 @@ void rendertoHDR(Shader &shader, Model &model)
         glm::mat4 modelMatrix = glm::mat4(1.0f);
         shader.setMat4("model", modelMatrix);
         shader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(modelMatrix))));
-        // light properties
-        shader.setVec3("lightDir", lightDir);
+        // set lighting directions 
+        for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
+        {
+            shader.setVec3("lightDirections[" + std::to_string(i) + "]", lightDirections[i]);
+            shader.setVec3("lightRadiances[" + std::to_string(i) + "]", lightRadiances[i]);
+        }
+        shader.setInt("numLights", sizeof(lightDirections)/sizeof(lightDirections[0]));
         shader.setVec3("eyePos", cameraPos);
+        
         // draw object
         model.Draw(shader);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -307,7 +320,7 @@ int main(void)
 
     // load models
     // -----------
-    Model ourModel(FileSystem::getPath("resources/objects/grain_sphere.obj"));
+    Model ourModel(FileSystem::getPath("resources/objects/sphere.obj"));
 
     /* Loop until the user closes the window */
 
