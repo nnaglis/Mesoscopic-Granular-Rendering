@@ -6,7 +6,8 @@ in vec2 TexCoords;
 in vec3 Fnormal;
 in vec3 FragPos;
 
-uniform sampler2D tex;
+uniform sampler2D depthMap;
+uniform mat4 lightSpaceMatrices[MAX_LIGHTS];
 
 // lights
 uniform int numLights;
@@ -21,10 +22,14 @@ const float PI = 3.14159265359;
 
 // Predefined material properties
 uniform vec3 sigma_s_prime = vec3(1.0);
-uniform vec3 sigma_a = vec3(0.0);
+uniform vec3 sigma_a = vec3(0.01);
 uniform float g = 0.0;
 uniform float n_material = 1.0;
 uniform float roughness = 0.0;
+
+// plane near and far
+uniform float nearPlane;
+uniform float farPlane;
 
 
 uniform vec3 reflectance = vec3(0.1);
@@ -185,6 +190,59 @@ vec3 SingleScattering(vec3 albedo, float Fresnel, vec3 normal, vec3 wi, vec3 wo)
     return nom/denom;
 }
 
+float LinearizeDepth(float depth, float nearPlane, float farPlane) {
+    float z = depth * 2.0 - 1.0; // Transform depth to NDC [-1, 1]
+    return (2.0 * nearPlane * farPlane) / (farPlane + nearPlane - z * (farPlane - nearPlane));
+}
+
+
+vec3 BSSRDF_distance(float r, vec3 sigma_a, vec3 sigma_s, float g, float A)
+{
+    vec3 sigma_s_prime = sigma_s * (1.0 - g);
+    vec3 sigma_t_prime = sigma_s_prime + sigma_a;
+    vec3 D = 1.0 / (3.0 * sigma_t_prime);
+    vec3 sigma_tr = sqrt(sigma_a / D);
+    vec3 z_r = 3.0 * D;
+    vec3 z_v = z_r + 4.0 * A * D;
+    vec3 d_r = sqrt(z_r * z_r + r * r);
+    vec3 d_v = sqrt(z_v * z_v + r * r);
+
+
+
+    //accoridng to Student paper
+    vec3 albedo_prime = sigma_s_prime / sigma_t_prime;
+    
+
+    vec3 real_source = (sigma_tr * d_r + 1.0) / (d_r * d_r * d_r * sigma_t_prime) * exp(-sigma_tr * d_r);
+    vec3 virt_source = z_v * (1.0 + sigma_tr * d_v) / (d_v * d_v * d_v * sigma_t_prime) * exp(-sigma_tr * d_v);
+
+    return albedo_prime / (4.0 * PI) * (real_source + virt_source);
+
+
+
+//     float std_bssrdf(float r, vec4 props) {
+//     float sigma_s = props.x;
+//     float sigma_a = props.y;
+//     float g = props.z;
+//     float A = props.w;
+
+//     float sigma_t_p = sigma_s * (1.0 - g) + sigma_a;
+//     float D = 1.0 / (3.0 * sigma_t_p);
+//     float sigma_tr = sqrt(sigma_a / D);
+//     float zr = 3.0 * D;
+//     float zv = zr + 4.0 * A * D;
+//     float dr = sqrt(zr * zr + r * r);
+//     float dv = sqrt(zv * zv + r * r);
+
+//     float real = zr * (1.0 + sigma_tr * dr) / (dr * dr * dr) * exp(-sigma_tr * dr);
+//     float virt = zv * (1.0 + sigma_tr * dv) / (dv * dv * dv) * exp(-sigma_tr * dv);
+//     float albedo = 1.0 - sigma_a / zr;
+
+//     return albedo * M_1_4PIPI * (real + virt);
+// }
+
+}
+
 void main()
 {   
     vec3 Fnormal = normalize(Fnormal);
@@ -216,6 +274,34 @@ void main()
     vec3 resultFcolor = vec3(0.0);
 
     for (int i = 0; i < (numLights); i++) {
+
+        // calculating thickness of the material
+            vec4 fragPosLightSpace = lightSpaceMatrices[i] * vec4(FragPos, 1.0);
+            vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+            projCoords = projCoords * 0.5 + 0.5; 
+
+            //TODO adding bias to projcoords.xy components
+            float bias = 0.005;
+            if (projCoords.x < 0.5) {
+                projCoords.x += bias;
+            }
+            else {
+                projCoords.x -= bias;
+            }
+            if (projCoords.y < 0.5) {
+                projCoords.y += bias;
+            }
+            else {
+                projCoords.y -= bias;
+            }
+            //TODO adding bias to projcoords.xy components
+            
+            float depth = texture(depthMap, projCoords.xy).r; // The depth from the texture
+            // linearize the depth values
+            float linearizedFrontDepth = LinearizeDepth(depth,nearPlane,farPlane);
+            float linearizedBackDepth = LinearizeDepth(projCoords.z,nearPlane,farPlane);
+            float thickness = linearizedBackDepth - linearizedFrontDepth;
+
         vec3 lightDir = normalize(lightDirections[i]);
         vec3 lightRadiance = lightRadiances[i];
 
@@ -258,7 +344,7 @@ void main()
 
         //single scattering term
         // vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo);
-        vec3 single_scattering = SingleScattering(material.albedo, 1.0-Fr_1, Fnormal, wi, wo);
+        vec3 single_scattering = SingleScattering(material.albedo, 1.0-Fr_1, Fnormal, wi, wo) * max(cos_incident,0.0);
 
 
         // Full BSSRDF approximation with BRDF
@@ -277,7 +363,7 @@ void main()
             float G = G(wi, wo, Fnormal, roughness);
 
 
-            float numerator = D * G * /*Fr_1*/ 1.0;
+            float numerator = D * G * Fr_1;
             float denominator = 4.0 * abs(dot(Fnormal, wo))*abs(dot(Fnormal, wi));
             float BRDF = 0.0;
             // Avoid division by zero
@@ -285,12 +371,16 @@ void main()
                 BRDF = numerator / denominator * max(cos_incident,0.0);
             }
         
-        resultFcolor += (BRDF + BSSRDF) * lightRadiance;
+        // resultFcolor += (BRDF + BSSRDF) * lightRadiance;
         // resultFcolor = vec3(single_scattering);
         // resultFcolor += single_scattering;
         // resultFcolor += BRDF * lightRadiance;
         // resultFcolor += diffuse;
         // resultFcolor = vec3(Fr_2);
+
+        // resultFcolor += (BSSRDF_distance(thickness, sigma_a, sigma_s, g, A(n_material)) + single_scattering * max(cos_incident,0.0)) * lightRadiance;
+        resultFcolor += (BSSRDF_distance(thickness, sigma_a, sigma_s, g, A(n_material)) + single_scattering + BRDF ) * lightRadiance;
+
 
         
     }

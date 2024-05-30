@@ -28,6 +28,9 @@ unsigned int SCR_HEIGHT = 1000;
 double lastTime = glfwGetTime();
 int nbFrames = 0;
 
+// object 
+float objectRadius = 2.5f;
+
 // Camera
 float radius = 6.5f;
 float verticalAngle = 0.0f;
@@ -36,33 +39,39 @@ float cameraSpeed = 0.03f; // camera speed per frame
 glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, radius);
 float fov = 45.0f;
 // Near and Far clipping planes
-float nearPlane = 0.1f;
-float farPlane = 100.0f;
+// float nearPlane = 3.0f;
+// float farPlane = 10.0f;
 
 // Framebuffers
 GLuint FramebufferName;
+GLuint depthTextures[2];
+
 GLuint hdrFBO;
 GLuint colorBuffer;
 
 //for testing
 bool DoOnce = true;
 
+
 //light direction
 glm::vec3 lightDirections[] = {
         glm::vec3(1.0f,  1.0f, 1.0f),
-        glm::vec3(-1.0f,  -1.0f, -3.0f),
+        glm::vec3(-1.0f,  -1.0f, -1.6f),
     };
 glm::vec3 lightRadiances[] = {
         glm::vec3(20.0f, 20.0f, 20.0f),
         glm::vec3(10.0f, 10.0f, 10.0f),
     };
+glm::mat4 lightSpaceMatrices[2];
+
+
 
 
 // MVP matrices
 // glm::mat4 modelMatrix = glm::mat4(1.0f);    // Calculate model matrix
 glm::mat4 viewMatrix = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)); // Calculate view matrix
-glm::mat4 projectionMatrix = glm::perspective(glm::radians(fov), (float)SCR_WIDTH/(float)SCR_HEIGHT, nearPlane, farPlane); // Calculate projection matrix
-
+float distanceToCamera = glm::length(cameraPos);
+glm::mat4 projectionMatrix = glm::perspective(glm::radians(fov), (float)SCR_WIDTH/(float)SCR_HEIGHT, distanceToCamera - objectRadius, distanceToCamera + objectRadius); // Calculate projection matrix
 
 
 // set up color buffer for HDR rendering
@@ -103,6 +112,7 @@ void rendertoHDR(Shader &shader, Model &model)
         glDepthFunc(GL_LESS);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         shader.use();
+        shader.setInt("depthMap", 0);
         // MVP matrices to be used in the vertex shader
         shader.setMat4("projection", projectionMatrix);
         shader.setMat4("view", viewMatrix);
@@ -110,11 +120,16 @@ void rendertoHDR(Shader &shader, Model &model)
         glm::mat4 modelMatrix = glm::mat4(1.0f);
         shader.setMat4("model", modelMatrix);
         shader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(modelMatrix))));
-        // set lighting directions 
+
+        shader.setFloat("farPlane", distanceToCamera + objectRadius);
+        shader.setFloat("nearPlane", distanceToCamera - objectRadius);
+
+        // set light properties
         for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
         {
             shader.setVec3("lightDirections[" + std::to_string(i) + "]", lightDirections[i]);
             shader.setVec3("lightRadiances[" + std::to_string(i) + "]", lightRadiances[i]);
+            shader.setMat4("lightSpaceMatrices[" + std::to_string(i) + "]", lightSpaceMatrices[i]);
         }
         shader.setInt("numLights", sizeof(lightDirections)/sizeof(lightDirections[0]));
         shader.setVec3("eyePos", cameraPos);
@@ -198,7 +213,109 @@ void saveHDRImage(const char *filename, const float *colorBuffer)
 
 
 
+void setupDepthBuffer(GLuint &texture)
+{
+    // The framebuffer, which regroups 0, 1, or more textures, and 0 or 1 depth buffer.
+    glGenFramebuffers(1, &FramebufferName);
+    glBindFramebuffer(GL_FRAMEBUFFER, FramebufferName);
 
+    glGenTextures(1, &texture);
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0,GL_DEPTH_COMPONENT32F, SCR_HEIGHT, SCR_WIDTH, 0,GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, texture, 0);
+
+    glDrawBuffer(GL_NONE); // No color buffer is drawn to.
+
+    // Always check that our framebuffer is ok
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        printf("Framebuffer not complete\n");
+        return;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void rendertoDepthTexture(Shader &shader, Model &model, int index, glm::vec3 lightDir, GLuint texture)
+{
+    
+    
+    
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, FramebufferName);
+    shader.use();
+
+    //TODO probably do not need to do this again
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+    // glEnable(GL_DEPTH_TEST);
+    // MVP matrices to be used in the vertex shader
+    glm::mat4 lightView = glm::lookAt(radius*normalize(lightDir), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    float left = -3.0f, right = 3.0f, bottom = -3.0f, top = 3.0f;
+    // calculate the length of the light direction vector
+    float distToCamera = glm::length(radius*normalize(lightDir));
+    cout << "Distance to camera: " << distanceToCamera << endl;
+    glm::mat4 lightProjection = glm::ortho(left, right, bottom, top, (distToCamera - 2.5f), (distToCamera + 2.5f));
+    glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+    shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+    lightSpaceMatrices[index] = lightSpaceMatrix;
+    // set model matrix to identity matrix
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
+    shader.setMat4("model", modelMatrix);
+
+    // Enable face culling
+    glEnable(GL_CULL_FACE);
+    // Cull front faces
+    glCullFace(GL_BACK);
+
+    // draw object
+    model.Draw(shader);
+
+    // Reset to default culling mode after drawing
+    glCullFace(GL_BACK);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    // For testing
+    GLfloat* pixels_float = new GLfloat[SCR_HEIGHT * SCR_WIDTH];
+    unsigned char* pixels = new unsigned char[SCR_HEIGHT * SCR_WIDTH];
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT, pixels_float);
+    for (int i = 0; i < SCR_HEIGHT * SCR_WIDTH; i++)
+    {
+        // cout << pixels_float[i] << " ";
+        pixels[i] = static_cast<unsigned char>(pixels_float[i] * 255.0f);
+    }
+
+    // Save texture data to PNG using stb_image_write library
+    std::stringstream filename;
+    filename << "output/depthTexture" << texture << ".png";
+    std::string fullPath = FileSystem::getPath(filename.str());
+    stbi_write_png(fullPath.c_str(), SCR_WIDTH, SCR_HEIGHT, 1, pixels, 0);
+
+    // stbi_write_png(FileSystem::getPath("output/depthTexture.png").c_str(), SCR_WIDTH, SCR_HEIGHT, 1, pixels, 0);
+    // saveHDRImage(FileSystem::getPath("output/depthTexture.exr").c_str(), pixels_float);
+
+
+
+
+
+
+
+
+
+}
 
 // Registering a callback function that gets called each time the window is resized.
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -206,8 +323,8 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
         glViewport(0, 0, width, height);
     // Calculate new aspect ratio
     float aspectRatio = (float)width / (float)height;
-
-    projectionMatrix  = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
+    float distanceToCamera = glm::length(cameraPos);
+    projectionMatrix  = glm::perspective(glm::radians(fov), aspectRatio, distanceToCamera - objectRadius, distanceToCamera + objectRadius);
     SCR_HEIGHT = height;
     SCR_WIDTH = width;
     DoOnce = true;
@@ -277,6 +394,7 @@ int main(void)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     #endif
 
+    glfwWindowHint(GLFW_DEPTH_BITS, 32);
     /* Create a windowed mode window and its OpenGL context */
     window = glfwCreateWindow(SCR_WIDTH/2, SCR_HEIGHT/2, "OpenGL Reference", NULL, NULL);
     if (!window)
@@ -304,8 +422,8 @@ int main(void)
 
     // Registering the callback function on window resize to make sure OpenGL renders the image in the right size whenever the window is resized.
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    Shader ourShader(FileSystem::getPath("src/shaders/vertexShader.vs").c_str(), FileSystem::getPath("src/shaders/fragmentShader.fs").c_str());
-    Shader FBOShader(FileSystem::getPath("src/shaders/FBOvertexShader2.vs").c_str(), FileSystem::getPath("src/shaders/FBOfragmentShader2.fs").c_str());
+    Shader ourShader(FileSystem::getPath("src/shaders/vertexShader.vs").c_str(), FileSystem::getPath("src/shaders/fragmentShader2.fs").c_str());
+    Shader FBOShader(FileSystem::getPath("src/shaders/vertexShader2.vs").c_str(), FileSystem::getPath("src/shaders/FBOfragmentShader.fs").c_str());
     
 
     
@@ -322,45 +440,38 @@ int main(void)
     // -----------
     Model ourModel(FileSystem::getPath("resources/objects/sphere.obj"));
 
+
+    
+    setupColorBuffer();
+    
+
+    
+
+    //for each light source, render the scene depth to a texture
+    for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
+    {
+        setupDepthBuffer(depthTextures[i]);
+        // float distToCamera = glm::length(radius*normalize(lightDirections[i]));
+        // lightPlanes[i] = glm::vec2(distToCamera - objectRadius, distToCamera + objectRadius);
+        rendertoDepthTexture(FBOShader, ourModel, i, lightDirections[i], depthTextures[i]);
+    }
+
     /* Loop until the user closes the window */
-
-    // // The framebuffer, which regroups 0, 1, or more textures, and 0 or 1 depth buffer.
-    
-    glGenFramebuffers(1, &FramebufferName);
-    glBindFramebuffer(GL_FRAMEBUFFER, FramebufferName);
-
-    // Depth texture. Slower than a depth buffer, but you can sample it later in your shader
-    GLuint depthTexture;
-    glGenTextures(1, &depthTexture);
-    glBindTexture(GL_TEXTURE_2D, depthTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0,GL_DEPTH_COMPONENT16, 800, 600, 0,GL_DEPTH_COMPONENT, GL_FLOAT, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthTexture, 0);
-
-    glDrawBuffer(GL_NONE); // No color buffer is drawn to.
-
-    // Always check that our framebuffer is ok
-    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    return 0;
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    
-
-
     // The render loop
     while (!glfwWindowShouldClose(window))
     {
         if (DoOnce)
         {
-            setupColorBuffer();
+            
+            //set depthMap texture in the shader to the depthTexture
+            
+
+            
             // glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
             // Render to HDR buffer
             rendertoHDR(ourShader, ourModel);
+
+
             // Save HDR image
             float *pixelBuffer = new float[SCR_WIDTH * SCR_HEIGHT * 3];
             glBindTexture(GL_TEXTURE_2D, colorBuffer);
@@ -369,8 +480,12 @@ int main(void)
             // {
             //     cout << pixelBuffer[i] << " ";
             // }
+            //unbind the texture
+            glBindTexture(GL_TEXTURE_2D, 0);
             saveHDRImage(FileSystem::getPath("output/hdrOutput.exr").c_str(), pixelBuffer);
             DoOnce = false;
+
+            // printf("Depth texture saved\n");
         }
         
 
@@ -529,4 +644,8 @@ inline void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 
     // Update the view matrix
     viewMatrix = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    // Update the projection matrix
+    distanceToCamera = glm::length(cameraPos);
+    projectionMatrix = glm::perspective(glm::radians(fov), (float)SCR_WIDTH/(float)SCR_HEIGHT, distanceToCamera - objectRadius, distanceToCamera + objectRadius);
+
 }
