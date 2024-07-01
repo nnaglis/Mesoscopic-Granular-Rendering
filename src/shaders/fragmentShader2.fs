@@ -6,7 +6,9 @@ in vec2 TexCoords;
 in vec3 Fnormal;
 in vec3 FragPos;
 
-uniform sampler2D depthMap;
+// uniform sampler2D depthMap;
+uniform sampler2D normalMap;
+uniform sampler2D vertexMap;
 uniform mat4 lightSpaceMatrices[MAX_LIGHTS];
 
 // lights
@@ -21,18 +23,18 @@ uniform vec3 eyePos;
 const float PI = 3.14159265359;
 
 // Predefined material properties
-uniform vec3 sigma_s_prime = vec3(1.0);
-uniform vec3 sigma_a = vec3(0.01);
+uniform vec3 sigma_s = vec3(1.0);
+uniform vec3 sigma_a = vec3(0.1);
 uniform float g = 0.0;
 uniform float n_material = 1.0;
-uniform float roughness = 0.0;
+uniform float roughness = 0.00;
 
 // plane near and far
 uniform float nearPlane;
 uniform float farPlane;
 
 
-uniform vec3 reflectance = vec3(0.1);
+uniform vec3 reflectance = vec3(0.5);
 
 // Material properties
 struct MaterialProperties {
@@ -183,11 +185,13 @@ float FresnelReflection(float n1, float n2, float cosT, float cosI)
 
 vec3 SingleScattering(vec3 albedo, float Fresnel, vec3 normal, vec3 wi, vec3 wo)
 {
-    vec3 nom = albedo * Fresnel * hgPhaseFunction(normalize(wi), wo);
-    float denom = abs(dot(normal, normalize(wi))) + abs(dot(normal, wo));
+    vec3 nom = albedo * Fresnel * hgPhaseFunction(wi, wo);
+    float denom = abs(dot(normal, wi)) + abs(dot(normal, wo));
     if (denom == 0.0) return vec3(0.0);
     // vec3 single_scattering = albedo * Fresnel * hgPhaseFunction(normalize(wi), wo) / ( abs(dot(normal, normalize(wi))) + abs(dot(normal, wo)) );
+
     return nom/denom;
+    // return vec3(dot(wi, wo));
 }
 
 float LinearizeDepth(float depth, float nearPlane, float farPlane) {
@@ -202,7 +206,7 @@ vec3 BSSRDF_distance(float r, vec3 sigma_a, vec3 sigma_s, float g, float A)
     vec3 sigma_t_prime = sigma_s_prime + sigma_a;
     vec3 D = 1.0 / (3.0 * sigma_t_prime);
     vec3 sigma_tr = sqrt(sigma_a / D);
-    vec3 z_r = 3.0 * D;
+    vec3 z_r = 1.0 / sigma_t_prime;
     vec3 z_v = z_r + 4.0 * A * D;
     vec3 d_r = sqrt(z_r * z_r + r * r);
     vec3 d_v = sqrt(z_v * z_v + r * r);
@@ -245,10 +249,11 @@ vec3 BSSRDF_distance(float r, vec3 sigma_a, vec3 sigma_s, float g, float A)
 
 void main()
 {   
+    vec3 sigma_s = sigma_s / (1.0 - g);
     vec3 Fnormal = normalize(Fnormal);
     // Creating a material instance with the predefined properties
     MaterialProperties material;
-    material.sigma_s_prime = sigma_s_prime;
+    material.sigma_s_prime = sigma_s * (1.0 - g);
     material.sigma_a = sigma_a;
     material.g = g;
     material.n = n_material;
@@ -256,14 +261,14 @@ void main()
     // material.reflectance = reflectance;
 
     // Calculating the albedo
-    vec3 sigma_s = sigma_s_prime / (1.0 - g);
+    // vec3 sigma_s = sigma_s_prime / (1.0 - g);
     vec3 sigma_t = sigma_s + sigma_a;
     material.albedo = sigma_s / sigma_t;
 
     // Calculating the reduced albedo
     // vec3 sigma_s_prime = ( 1.0 - g ) * sigma_s;
-    vec3 sigma_t_prime = sigma_s_prime + sigma_a;
-    material.albedo_prime = sigma_s_prime / sigma_t_prime;
+    vec3 sigma_t_prime = material.sigma_s_prime + sigma_a;
+    material.albedo_prime = material.sigma_s_prime / sigma_t_prime;
 
     // Calculating the diffuse reflectance
     vec3 DiffuseReflectance = DiffuseReflectance(material.n, material.sigma_s_prime, material.sigma_a);
@@ -296,11 +301,8 @@ void main()
             }
             //TODO adding bias to projcoords.xy components
             
-            float depth = texture(depthMap, projCoords.xy).r; // The depth from the texture
-            // linearize the depth values
-            float linearizedFrontDepth = LinearizeDepth(depth,nearPlane,farPlane);
-            float linearizedBackDepth = LinearizeDepth(projCoords.z,nearPlane,farPlane);
-            float thickness = linearizedBackDepth - linearizedFrontDepth;
+            // float depth = texture(depthMap, projCoords.xy).r; // The depth from the texture
+
 
         vec3 lightDir = normalize(lightDirections[i]);
         vec3 lightRadiance = lightRadiances[i];
@@ -314,41 +316,33 @@ void main()
         vec3 Li = lightRadiance * max(cos_incident, 0.0);
     
 
-        // Ft for in-scattering
+        // find Fresnel term for in-scattering n1 to n2
             float sin_incident = sqrt(1.0 - cos_incident * cos_incident);
             float sin_refracted = sin_incident / material.n;
             float cos_refracted = sqrt(1.0 - sin_refracted * sin_refracted);
-            if (cos_incident < 0.0) {
-                cos_refracted = -cos_refracted;
-            }
-
             float Fr_1 = FresnelReflection(1.0, material.n, max(cos_refracted,0.0), max(cos_incident, 0.0));
             float Ft_1 = 1.0 - Fr_1;
-            // Ft_1 = max(Ft_1, 0.0);
-        // Ft for out-scattering
-            
-            float cos_refracted_2 = dot(Fnormal, -wo);
-            float sin_refracted_2 = sqrt(1.0 - cos_refracted_2 * cos_refracted_2);
-            //from material to air
-                float sin_incident_2 = sin_refracted_2 / material.n;
-                float cos_incident_2 = sqrt(1.0 - sin_incident_2 * sin_incident_2);
-                if (cos_refracted_2 < 0.0) {
-                    cos_incident_2 = -cos_incident_2;
-                }
-                float Fr_2 = FresnelReflection(material.n, 1.0, max(cos_refracted_2,0.0), max(cos_incident_2, 0.0));
-                Fr_2 = clamp(Fr_2, 0.0, 1.0);
-                float Ft_2 = 1.0 - Fr_2;
-                // Ft_2 = max(Ft_2, 0.0);
-        // full Fresnel term
-            float Fresnel = Ft_1 * Ft_2;  
 
+            // find Fresnel term for out-scattering n2 to n1
+            float cos_refracted_2 = dot(Fnormal, wo);
+            float sin_refracted_2 = sqrt(1.0 - cos_refracted_2 * cos_refracted_2);
+            float sin_incident_2 = sin_refracted_2 / material.n;
+            float cos_incident_2 = sqrt(1.0 - sin_incident_2 * sin_incident_2);
+            float Fr_2 = FresnelReflection(material.n, 1.0, max(cos_refracted_2,0.0), max(cos_incident_2, 0.0));
+            float Ft_2 = 1.0 - Fr_2;
+            
+            // full Fresnel term
+            float Fresnel = Ft_1 * Ft_2;
         //single scattering term
-        // vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo);
-        vec3 single_scattering = SingleScattering(material.albedo, 1.0-Fr_1, Fnormal, wi, wo) * max(cos_incident,0.0);
+        // vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(cos_incident,0.0);
+        // vec3 single_scattering = SingleScattering(material.albedo, 1.0-Fr_1, Fnormal, wi, wo) * max(cos_incident,0.0);
+
+        vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(cos_incident,0.0);
+
 
 
         // Full BSSRDF approximation with BRDF
-        vec3 BSSRDF = (single_scattering + Fresnel*DiffuseReflectance/PI) * max(cos_incident,0.0);
+        vec3 BSSRDF = (single_scattering + Fresnel*DiffuseReflectance/PI);
         //diffuse lighting
             // 1/PI is a normalization factor to ensure that total energy is conserved
         vec3 diffuse = Li / PI * reflectance;
@@ -371,7 +365,7 @@ void main()
                 BRDF = numerator / denominator * max(cos_incident,0.0);
             }
         
-        // resultFcolor += (BRDF + BSSRDF) * lightRadiance;
+        // resultFcolor += (Fresnel*DiffuseReflectance/PI) * Li;
         // resultFcolor = vec3(single_scattering);
         // resultFcolor += single_scattering;
         // resultFcolor += BRDF * lightRadiance;
@@ -379,10 +373,13 @@ void main()
         // resultFcolor = vec3(Fr_2);
 
         // resultFcolor += (BSSRDF_distance(thickness, sigma_a, sigma_s, g, A(n_material)) + single_scattering * max(cos_incident,0.0)) * lightRadiance;
-        resultFcolor += (BSSRDF_distance(thickness, sigma_a, sigma_s, g, A(n_material)) + single_scattering + BRDF ) * lightRadiance;
+        // resultFcolor += (BSSRDF_distance(thickness, sigma_a, sigma_s, g, A(n_material)) + single_scattering + BRDF ) * lightRadiance;
 
+        // resultFcolor += BSSRDF_distance(thickness, sigma_a, sigma_s, g, A(n_material)) * lightRadiance;
 
-        
+        resultFcolor += BSSRDF * Li;
+
+        // resultFcolor = vec3(thickness);
     }
     FragColor = vec4(resultFcolor, 1.0);
 }
