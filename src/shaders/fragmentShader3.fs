@@ -6,6 +6,8 @@ in vec2 TexCoords;
 in vec3 Fnormal;
 in vec3 FragPos;
 
+
+
 // texture sampler array for number of lights
 uniform sampler2D normalTextures[MAX_LIGHTS]; 
 uniform sampler2D vertexTextures[MAX_LIGHTS]; 
@@ -24,8 +26,8 @@ uniform vec3 eyePos;
 const float PI = 3.14159265359;
 
 // Predefined material properties
-uniform vec3 sigma_s = vec3(2.3, 2.3, 2.3);
-uniform vec3 sigma_a = vec3(0.0030, 0.0030, 0.0030);
+uniform vec3 sigma_s = vec3(1.0);
+uniform vec3 sigma_a = vec3(0.001);
 uniform float g = 0.0;
 uniform float n_material = 2.4;
 uniform float roughness = 0.00;
@@ -62,12 +64,13 @@ struct MaterialProperties {
 };
 
 // Henyey-Greenstein phase function
-float hgPhaseFunction(vec3 wi, vec3 wo) {
-    float cosTheta = dot(wi, wo);
-    float denom = 1.0 + g * g + 2.0 * g * cosTheta;
-    if (denom == 0.0) return 0.0;
-    return 1.0 / (4.0 * PI) * (1.0 - g * g) / pow(denom, 1.5);
+float hgPhaseFunction(vec3 wi, vec3 wo, float g) {
+    float cosTheta = dot(normalize(wi), normalize(wo));
+    float numerator = 1.0 - g * g;
+    float denominator = pow(1.0 + g * g - 2.0 * g * cosTheta, 1.5);
+    return (1.0 / (4.0 * PI)) * (numerator / denominator);
 }
+
 
 float Rs(float cosI, float cosT, float n1, float n2) {
     float term1 = n1 * cosI - n2 * cosT;
@@ -99,7 +102,7 @@ float Distribution_GGX(float NdotH, float roughness)
 
 float lambda(float tan2theta, float roughness)
 {
-    float lambda = (sqrt(1.0 + roughness * roughness * tan2theta) - 1.0) /2;
+    float lambda = (sqrt(1.0 + roughness * roughness * tan2theta) - 1.0) / 2.0;
     return lambda;
 }
 
@@ -123,9 +126,9 @@ float G(vec3 wi, vec3 wo, vec3 normal, float roughness)
     float sin2theta_wo = 1.0 - cos2theta_wo;
     float tan2theta_wi = sin2theta_wi / cos2theta_wi;
     float tan2theta_wo = sin2theta_wo / cos2theta_wo;
-    float denom = (1 + lambda(tan2theta_wi, roughness) + lambda(tan2theta_wo, roughness));
+    float denom = (1.0 + lambda(tan2theta_wi, roughness) + lambda(tan2theta_wo, roughness));
     if (denom == 0.0) return 0.0;
-    return 1 / denom;
+    return 1.0 / denom;
 }
 
 float D(vec3 w, vec3 h, vec3 normal, float roughness)
@@ -152,10 +155,10 @@ float A(float n)
             C_1 = two_C_1 / 2.0;
             C_2 = three_C_2 / 3.0;
         }
-    float C_e = (1.0/ 2.0) * (1 - 3 * C_2);
-    float C_phi = (1.0 / 4.0) * (1 - 2 * C_1);
-    float nom =  1 - C_e;
-    float denom = 2 * C_phi;
+    float C_e = (1.0/ 2.0) * (1.0 - 3.0 * C_2);
+    float C_phi = (1.0 / 4.0) * (1.0 - 2.0 * C_1);
+    float nom =  1.0 - C_e;
+    float denom = 2.0 * C_phi;
     if (denom == 0.0) return 0.0;
     return nom/denom;
 }
@@ -185,13 +188,30 @@ float FresnelReflection(float n1, float n2, float cosT, float cosI)
 
 vec3 SingleScattering(vec3 albedo, float Fresnel, vec3 normal, vec3 wi, vec3 wo)
 {
-    vec3 nom = albedo * Fresnel * hgPhaseFunction(wi, wo);
+    vec3 nom = albedo * Fresnel * hgPhaseFunction(wi, wo, g);
     float denom = abs(dot(normal, wi)) + abs(dot(normal, wo));
     if (denom == 0.0) return vec3(0.0);
     // vec3 single_scattering = albedo * Fresnel * hgPhaseFunction(normalize(wi), wo) / ( abs(dot(normal, normalize(wi))) + abs(dot(normal, wo)) );
 
     return nom/denom;
     // return vec3(dot(wi, wo));
+}
+
+
+// Single scattering function
+vec3 SingleScattering2(vec3 wi, vec3 wo, vec3 normal_o, float Fresnel, vec3 sigma_t, float d_r, vec3 albedo) {
+    // Phase function
+    float phase = hgPhaseFunction(wi, wo, g);
+    // Attenuation
+    vec3 attenuation = exp(-sigma_t * (d_r));
+    // float cosTheta_o = dot(normal_o, wo);
+    float cosTheta_o = 1.0;
+
+    // Single scattering response
+    vec3 scattering = albedo * attenuation / (d_r * d_r) * phase  * Fresnel * cosTheta_o ;
+
+    // return scattering;
+    return scattering;
 }
 
 float LinearizeDepth(float depth, float nearPlane, float farPlane) {
@@ -209,8 +229,8 @@ vec3 BSSRDF_distance(vec3 r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_prime
     vec3 z_r = 1.0 / sigma_t_prime;
     vec3 z_v = z_r + 4.0 * A * D;
     float r_scalar = length(r)*1.0;
-    vec3 d_r = sqrt(z_r * z_r + r_scalar * r_scalar);
-    vec3 d_v = sqrt(z_v * z_v + r_scalar * r_scalar);
+    vec3 d_r = sqrt(z_r * z_r + vec3(r_scalar * r_scalar));
+    vec3 d_v = sqrt(z_v * z_v + vec3(r_scalar * r_scalar));
     // float d_r = sqrt(z_r_scalar * z_r_scalar + r_scalar * r_scalar);
     // float d_v = sqrt(z_v_scalar * z_v_scalar + r_scalar * r_scalar);
 
@@ -251,6 +271,7 @@ vec3 BSSRDF_distance_old(vec3 r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_p
 
 void main()
 {   
+    vec3 sigma_s = sigma_s / (1.0 - g);
     vec3 Fnormal = normalize(Fnormal);
     // Creating a material instance with the predefined properties
     MaterialProperties material;
@@ -283,22 +304,38 @@ void main()
 
         // calculating thickness of the material
             vec4 fragPosLightSpace = lightSpaceMatrices[i] * vec4(FragPos, 1.0);
-            vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+            vec3 projCoords = fragPosLightSpace.xyz; /*/ fragPosLightSpace.w; //if perspective division is needed*/
             projCoords = projCoords * 0.5 + 0.5; 
 
+            int sample_size = 80;
+            int sample_step = 2;
+
+            int sample_start_x;
+            int sample_end_x;
+            int sample_start_y;
+            int sample_end_y;
+
             //TODO adding bias to projcoords.xy components
-            float bias = 0.0012;
+            float bias = 0.003;
             if (projCoords.x < 0.5) {
                 projCoords.x += bias;
+                sample_start_x = 0;
+                sample_end_x = sample_size;
             }
             else{
                 projCoords.x -= bias;
+                sample_start_x = -sample_size;
+                sample_end_x = 0;
             }
             if (projCoords.y < 0.5) {
                 projCoords.y += bias;
+                sample_start_y = 0;
+                sample_end_y = sample_size;
             }
             else{
                 projCoords.y -= bias;
+                sample_start_y = -sample_size;
+                sample_end_y = 0;
             }
             //TODO adding bias to projcoords.xy components
             
@@ -328,24 +365,43 @@ void main()
         vec3 Lo = vec3(0.0);
 
 
-        //FOR TESTING
-        // vec2 resolution = vec2(1,1);
+        // FOR TESTING
+        float pixel = 1.0/1000.0;
+        // vec3 frontPos = texture(vertexTextures[i], projCoords.xy).xyz;
+        // vec3 frontNormal = texture(normalTextures[i], projCoords.xy).xyz;
+        // vec3 thickness = FragPos - frontPos;
+        // // Lo = vec3(length(thickness));
+        // Lo += 1.0/PI * BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * 1.0 * dot(frontNormal, wi);
+        // sample_start_x = 1;
+        // sample_end_x = 2;
+        // sample_start_y = 1;
+        // sample_end_y = 2;
         //FOR TESTING
     
         //loop through the whole resolution (-20 is the optimal)
-        int sample_size = 4;
-        int sample_step = 1;
 
-        for (int j = int(projCoords.x*1000)-sample_size; j < int(projCoords.x*1000)+sample_size; j=j+sample_step) {
-            for (int k = int(projCoords.y*1000)-sample_size; k < int(projCoords.y*1000)+sample_size; k=k+sample_step) {
+        // Calculate integer-based texel coordinates
+        
+
+        for (int j = sample_start_x; j < sample_end_x; j=j+sample_step) {
+            for (int k = sample_start_y; k < sample_end_y; k=k+sample_step) {
             
+            // // check if the point is inside the screen
+            // if (j <0 || j >= 1000 || k < 0 || k >= 1000) {
+            //     continue;
+            // }
 
-            // get a point of incident
-            vec2 point = vec2(float(j)/resolution.x, float(k)/resolution.y);
+            // get the point
+            vec2 point = projCoords.xy + vec2(j, k) * pixel;
+
+            //clamp the point
+            point = clamp(point, 0.0, 1.0);
+
             // get a normal of the incident point
-            vec3 frontPos = texture(vertexTextures[i], projCoords.xy).xyz;
-            float thickness_old = length(FragPos - frontPos);
+            vec3 frontPos = texture(vertexTextures[i], point).xyz;
+            // float thickness_old = length(FragPos - frontPos);
             vec3 thickness = FragPos - frontPos;
+            
             vec3 incidentNormal = texture(normalTextures[i], point).xyz;
 
             // check if empty
@@ -382,7 +438,27 @@ void main()
 
             // MODIFIED thickness scale of 1.9
             // Lo += 1.0/PI * BSSRDF_distance_old(vec3(thickness_old)*10, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
-            Lo += 1.0/PI * BSSRDF_distance(thickness*1.9, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
+            // thickness = 10.0*thickness;
+            Lo += 1.0/PI * BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
+            // if (length(thickness) < 0.2) {
+            //     continue;
+            // }
+            vec3 singlescatCrit = SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), 0.3, material.albedo)*dot(incidentNormal, wi);
+    
+
+            vec3 singlescattering2 = SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), length(thickness), material.albedo)*dot(incidentNormal, wi);
+
+            if (length(singlescattering2) < length(vec3(singlescatCrit)) && dot(incidentNormal, wi) > 0.0 ){
+                Lo += singlescattering2;
+            }
+
+            // Lo += BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n))* dot(incidentNormal, wi);
+
+            // Lo += SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), length(thickness), material.albedo);
+
+            // Lo += vec3(length(thickness));
+            // Lo += length(thickness);
+
 
             // Lo += 1.0/PI * BSSRDF_distance(vec3(thickness), material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * dot(incidentNormal, wi);
             
@@ -397,6 +473,7 @@ void main()
     }
             if (numSamples != 0) {
                 Lo = Lo / numSamples;
+                // Lo = vec3(numSamples);
             }
             
 
@@ -468,7 +545,8 @@ void main()
 
         // resultFcolor += BSSRDF_distance(vec3(thickness), material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * lightRadiance*max(abs(cos_incident),0.15)/2;
 
-        resultFcolor += vec3((single_scattering+Lo)*lightRadiance);
+        resultFcolor += (Lo)*lightRadiance;
+        // resultFcolor = Lo;
         // resultFcolor += Lo*lightRadiance;
 
         // resultFcolor += Fresnel*DiffuseReflectance/PI * Li;
