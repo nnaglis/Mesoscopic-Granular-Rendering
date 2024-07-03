@@ -26,11 +26,11 @@ uniform vec3 eyePos;
 const float PI = 3.14159265359;
 
 // Predefined material properties
-uniform vec3 sigma_s = vec3(1.0);
+uniform vec3 sigma_s_prime = vec3(1.0);
 uniform vec3 sigma_a = vec3(0.001);
 uniform float g = 0.0;
 uniform float n_material = 2.4;
-uniform float roughness = 0.00;
+uniform float roughness = 0.01;
 
 // plane near and far
 uniform float nearPlane;
@@ -65,10 +65,11 @@ struct MaterialProperties {
 
 // Henyey-Greenstein phase function
 float hgPhaseFunction(vec3 wi, vec3 wo, float g) {
-    float cosTheta = dot(normalize(wi), normalize(wo));
+    float cosTheta = dot(wi, wo);
     float numerator = 1.0 - g * g;
     float denominator = pow(1.0 + g * g - 2.0 * g * cosTheta, 1.5);
     return (1.0 / (4.0 * PI)) * (numerator / denominator);
+    // return cosTheta;
 }
 
 
@@ -199,7 +200,7 @@ vec3 SingleScattering(vec3 albedo, float Fresnel, vec3 normal, vec3 wi, vec3 wo)
 
 
 // Single scattering function
-vec3 SingleScattering2(vec3 wi, vec3 wo, vec3 normal_o, float Fresnel, vec3 sigma_t, float d_r, vec3 albedo) {
+vec3 SingleScattering2(vec3 wi, vec3 wo, vec3 Fnormal, float Fresnel, vec3 sigma_t, float d_r, vec3 albedo, float g) {
     // Phase function
     float phase = hgPhaseFunction(wi, wo, g);
     // Attenuation
@@ -210,8 +211,8 @@ vec3 SingleScattering2(vec3 wi, vec3 wo, vec3 normal_o, float Fresnel, vec3 sigm
     // Single scattering response
     vec3 scattering = albedo * attenuation / (d_r * d_r) * phase  * Fresnel * cosTheta_o ;
 
-    // return scattering;
     return scattering;
+    // return vec3(phase);
 }
 
 float LinearizeDepth(float depth, float nearPlane, float farPlane) {
@@ -271,7 +272,7 @@ vec3 BSSRDF_distance_old(vec3 r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_p
 
 void main()
 {   
-    vec3 sigma_s = sigma_s / (1.0 - g);
+    vec3 sigma_s = sigma_s_prime / (1.0 - g);
     vec3 Fnormal = normalize(Fnormal);
     // Creating a material instance with the predefined properties
     MaterialProperties material;
@@ -300,15 +301,15 @@ void main()
     // Vec3 for the final color
     vec3 resultFcolor = vec3(0.0);
  
-    for (int i = 0; i < (numLights-1); i++) {
+    for (int i = 0; i < (numLights); i++) {
 
         // calculating thickness of the material
             vec4 fragPosLightSpace = lightSpaceMatrices[i] * vec4(FragPos, 1.0);
             vec3 projCoords = fragPosLightSpace.xyz; /*/ fragPosLightSpace.w; //if perspective division is needed*/
             projCoords = projCoords * 0.5 + 0.5; 
 
-            int sample_size = 80;
-            int sample_step = 2;
+            int sample_size = 1;
+            int sample_step = 40;
 
             int sample_start_x;
             int sample_end_x;
@@ -361,12 +362,12 @@ void main()
 
         vec3 Li = lightRadiance * max(cos_incident, 0.0);
 
-        float numSamples = 0;
+        int numSamples = 0;
         vec3 Lo = vec3(0.0);
 
 
         // FOR TESTING
-        float pixel = 1.0/1000.0;
+        vec2 pixel = vec2 (1.0 / resolution.x, 1.0 / resolution.y);
         // vec3 frontPos = texture(vertexTextures[i], projCoords.xy).xyz;
         // vec3 frontNormal = texture(normalTextures[i], projCoords.xy).xyz;
         // vec3 thickness = FragPos - frontPos;
@@ -383,8 +384,13 @@ void main()
         // Calculate integer-based texel coordinates
         
 
-        for (int j = sample_start_x; j < sample_end_x; j=j+sample_step) {
-            for (int k = sample_start_y; k < sample_end_y; k=k+sample_step) {
+        // for (int j = sample_start_x; j < sample_end_x; j=j+sample_step) {
+        //     for (int k = sample_start_y; k < sample_end_y; k=k+sample_step) {
+
+        //iterate through the whole texture
+        for (int j = 0; j < resolution.x; j+=sample_step) {
+            for (int k = 0; k < resolution.y; k+=sample_step) {
+                vec2 point =  vec2(j, k) * pixel;
             
             // // check if the point is inside the screen
             // if (j <0 || j >= 1000 || k < 0 || k >= 1000) {
@@ -392,7 +398,7 @@ void main()
             // }
 
             // get the point
-            vec2 point = projCoords.xy + vec2(j, k) * pixel;
+            // vec2 point = projCoords.xy + vec2(j, k) * pixel;
 
             //clamp the point
             point = clamp(point, 0.0, 1.0);
@@ -405,7 +411,7 @@ void main()
             vec3 incidentNormal = texture(normalTextures[i], point).xyz;
 
             // check if empty
-            if (incidentNormal == vec3(0.0)) {
+            if (length(incidentNormal) == 0.0) {
                 continue;
             }
             // find cos_incident
@@ -434,39 +440,40 @@ void main()
             float Fresnel = Ft_1 * Ft_2;
 
             // ORIGINAL
-            // Lo += 1.0/PI * BSSRDF_distance(vec3(thickness), material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
+            Lo += 1.0/PI * BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
 
             // MODIFIED thickness scale of 1.9
             // Lo += 1.0/PI * BSSRDF_distance_old(vec3(thickness_old)*10, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
             // thickness = 10.0*thickness;
-            Lo += 1.0/PI * BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
+            // Lo += 1.0/PI * BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
             // if (length(thickness) < 0.2) {
             //     continue;
             // }
-            vec3 singlescatCrit = SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), 0.3, material.albedo)*dot(incidentNormal, wi);
+            
     
 
-            vec3 singlescattering2 = SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), length(thickness), material.albedo)*dot(incidentNormal, wi);
+            // vec3 singlescattering2 = SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), length(thickness), material.albedo,material.g)*dot(incidentNormal, wi);
 
-            if (length(singlescattering2) < length(vec3(singlescatCrit)) && dot(incidentNormal, wi) > 0.0 ){
-                Lo += singlescattering2;
+            vec3 singlescattering_res = vec3(0.0);
+
+            if (dot(Fnormal, wi) > 0.0)
+            {
+                // Remove the single scattering term if the thickness is less than 0.3 (which addstoo high of a contribution to the final result) from front face
+                vec3 singlescatCrit = SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), 0.2, material.albedo, material.g)*dot(incidentNormal, wi);
+
+                vec3 singlescatReal = SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), length(thickness), material.albedo,material.g)*dot(incidentNormal, wi);
+
+                // if (length(singlescatReal) < length(vec3(singlescatCrit))) {
+                    singlescattering_res = SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), length(thickness), material.albedo,material.g)*dot(incidentNormal, wi);;
+                // }
+            }
+            // Separation for for asymmetry parameter g
+            else
+            {
+                    singlescattering_res = SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), length(thickness), material.albedo,material.g)*dot(incidentNormal, wi);
             }
 
-            // Lo += BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n))* dot(incidentNormal, wi);
-
-            // Lo += SingleScattering2(wi, wo, Fnormal, Fresnel, (sigma_a + sigma_s), length(thickness), material.albedo);
-
-            // Lo += vec3(length(thickness));
-            // Lo += length(thickness);
-
-
-            // Lo += 1.0/PI * BSSRDF_distance(vec3(thickness), material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * dot(incidentNormal, wi);
-            
-            //if thickness vector is of longer than 0.2
-            // Lo = thickness;
-
-            // Lo= vec3(0.2, 0.4, 0.6);
-            // Lo = vec3(Fresnel);
+            Lo += singlescattering_res;
 
         }
 
@@ -505,7 +512,7 @@ void main()
             // // vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(cos_incident,0.0);
             // // vec3 single_scattering = SingleScattering(material.albedo, 1.0-Fr_1, Fnormal, wi, wo) * max(cos_incident,0.0);
 
-        vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(cos_incident,0.0);
+        // vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(cos_incident,0.0);
 
 
 
@@ -518,20 +525,20 @@ void main()
         
 
         // // specular lighting
-        //     vec3 halfwayDir = normalize(wi + wo);
+            vec3 halfwayDir = normalize(wi + wo);
         //     // Normal Distribution Function
-        //     float D = D(wi, halfwayDir, Fnormal, roughness);
+            float D = D(wi, halfwayDir, Fnormal, roughness);
         //     // Geometry Shadowing Function
-        //     float G = G(wi, wo, Fnormal, roughness);
+            float G = G(wi, wo, Fnormal, roughness);
 
 
-        //     float numerator = D * G * Fr_1;
-        //     float denominator = 4.0 * abs(dot(Fnormal, wo))*abs(dot(Fnormal, wi));
-        //     float BRDF = 0.0;
-        //     // Avoid division by zero
-        //     if(denominator != 0.0) {
-        //         BRDF = numerator / denominator * max(cos_incident,0.0);
-        //     }
+            float numerator = D * G * Fr_1;
+            float denominator = 4.0 * abs(dot(Fnormal, wo))*abs(dot(Fnormal, wi));
+            float BRDF = 0.0;
+            // Avoid division by zero
+            if(denominator != 0.0) {
+                BRDF = numerator / denominator * max(cos_incident,0.0);
+            }
         
         // resultFcolor += (Fresnel*DiffuseReflectance/PI) * Li;
         // resultFcolor = vec3(single_scattering);
@@ -545,9 +552,9 @@ void main()
 
         // resultFcolor += BSSRDF_distance(vec3(thickness), material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * lightRadiance*max(abs(cos_incident),0.15)/2;
 
-        resultFcolor += (Lo)*lightRadiance;
+        // resultFcolor += (Lo);
         // resultFcolor = Lo;
-        // resultFcolor += Lo*lightRadiance;
+        resultFcolor += (BRDF+Lo)*lightRadiance;
 
         // resultFcolor += Fresnel*DiffuseReflectance/PI * Li;
 
