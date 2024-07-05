@@ -30,7 +30,7 @@ uniform vec3 sigma_s_prime = vec3(0.5);
 uniform vec3 sigma_a = vec3(0.5);
 uniform float g = 0.0;
 uniform float n_material = 1.0;
-uniform float roughness = 0.01;
+uniform float roughness = 0.00;
 uniform float thickness_scale = 3.0;
 
 // plane near and far
@@ -147,8 +147,8 @@ float A(float n)
             C_1 = two_C_1 / 2.0;
             C_2 = three_C_2 / 3.0;
         }
-    float C_e = (1.0/ 2.0) * (1.0 - 3.0 * C_2);
-    float C_phi = (1.0 / 4.0) * (1.0 - 2.0 * C_1);
+    float C_e = (1.0/ 2.0) * (1.0 - C_2);
+    float C_phi = (1.0 / 4.0) * (1.0 - C_1);
     float nom =  1.0 - C_e;
     float denom = 2.0 * C_phi;
     if (denom == 0.0) return 0.0;
@@ -275,7 +275,7 @@ void main()
             int sample_end_y;
 
             //TODO adding bias to projcoords.xy components
-            float bias = 0.003;
+            float bias = 0.001;
             if (projCoords.x < 0.5) {
                 projCoords.x += bias;
                 sample_start_x = 0;
@@ -307,11 +307,14 @@ void main()
         vec3 Lo = vec3(0.0);
 
 
-        // FOR TESTING
         vec2 pixel = vec2 (1.0 / resolution.x, 1.0 / resolution.y);
         vec3 frontPos = texture(vertexTextures[i], projCoords.xy).xyz;
 
         vec3 incidentNormal = texture(normalTextures[i], projCoords.xy).xyz;
+
+        // vec3 frontPos = texture(vertexTextures[i], vec2(0.5,0.5)).xyz;
+
+        // vec3 incidentNormal = texture(normalTextures[i], vec2(0.5,0.5)).xyz;
         vec3 thickness = (FragPos - frontPos)*thickness_scale;
     
             float cos_incident = dot(incidentNormal, wi);
@@ -335,14 +338,19 @@ void main()
             float Fresnel = Ft_1 * Ft_2;
 
             // ORIGINAL
-            Lo += 1.0/PI * BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
+            // if (dot (Fnormal, wi) <= 0.0)
+            // {
+                Lo += 1.0/PI * BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
+            // }
+            
     
         vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(dot(Fnormal, wi),0.0);
 
-        float r = length(thickness)/2.0;
-        // r = 2.4 * thickness_scale;
-        float area = PI * r * r;
-        resultFcolor += (Lo*area+single_scattering)*lightRadiance;
+        // float r = length(thickness)/2.0;
+        float r = 2.4 * thickness_scale/2.0;
+        // float area = PI * r * r;
+        float area =   r;
+        resultFcolor += ((Lo*area)+single_scattering)*lightRadiance;
     }
     FragColor = vec4(resultFcolor, 1.0);
 }
