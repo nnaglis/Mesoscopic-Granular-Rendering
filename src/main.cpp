@@ -65,7 +65,7 @@ bool DoOnce = true;
 
 //light direction
 glm::vec3 lightDirections[] = {
-        glm::vec3(1.0f,  1.0f, -1.0f),
+        glm::vec3(1.0f,  1.0f, 1.0f),
         glm::vec3(-1.0f,  -1.0f, -1.6f),
     };
 glm::vec3 lightRadiances[] = {
