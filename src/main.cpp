@@ -42,8 +42,13 @@ float fov = 45.0f;
 float nearPlane = 0.5f;
 float farPlane = 20.0f;
 
-// MSAA
-int MSAA_SampleCount = 1;
+float leftBoundary = -2.5f;
+float rightBoundary = 2.5f; 
+float bottomBoundary = -2.5f;
+float topBoundary = 2.5f;
+
+// MSAA (0 for none)
+int MSAA_SampleCount = 0;
 
 // Framebuffers
 GLuint FramebufferName;
@@ -60,7 +65,7 @@ bool DoOnce = true;
 
 //light direction
 glm::vec3 lightDirections[] = {
-        glm::vec3(1.0f,  1.0f, 1.0f),
+        glm::vec3(1.0f,  1.0f, -1.0f),
         glm::vec3(-1.0f,  -1.0f, -1.6f),
     };
 glm::vec3 lightRadiances[] = {
@@ -162,6 +167,62 @@ void rendertoHDR(Shader &shader, Model &model)
         // draw object
         model.Draw(shader);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void rendertoSDR(Shader &shader, Model &model)
+{
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+
+        // glEnable(GL_MULTISAMPLE);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        shader.use();
+        // pass normal and vertex textures to the shader
+        for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
+        {
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D, vertexTextures[i]);
+            shader.setInt("vertexTextures[" + std::to_string(i) + "]", i);
+        }
+
+        for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
+        {
+            glActiveTexture(GL_TEXTURE0 + i + 2);
+            glBindTexture(GL_TEXTURE_2D, normalTextures[i]);
+            shader.setInt("normalTextures[" + std::to_string(i) + "]", i + 2);
+        }
+
+
+        // MVP matrices to be used in the vertex shader
+        shader.setMat4("projection", projectionMatrix);
+        shader.setMat4("view", viewMatrix);
+        // set model matrix to identity matrix
+        glm::mat4 modelMatrix = glm::mat4(1.0f);
+        shader.setMat4("model", modelMatrix);
+        shader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(modelMatrix))));
+
+        shader.setFloat("farPlane", nearPlane);
+        shader.setFloat("nearPlane", farPlane);
+
+        // set light properties
+        for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
+        {
+            shader.setVec3("lightDirections[" + std::to_string(i) + "]", lightDirections[i]);
+            shader.setVec3("lightRadiances[" + std::to_string(i) + "]", lightRadiances[i]);
+            shader.setMat4("lightSpaceMatrices[" + std::to_string(i) + "]", lightSpaceMatrices[i]);
+        }
+        shader.setInt("numLights", sizeof(lightDirections)/sizeof(lightDirections[0]));
+        shader.setVec3("eyePos", cameraPos);
+
+        // Pass screen resolution to the shader
+        shader.setVec2("resolution", glm::vec2(SCR_WIDTH, SCR_HEIGHT));
+        
+        // draw object
+        model.Draw(shader);
+    // glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 // use tinyexr to save HDR image
@@ -275,10 +336,15 @@ void setupNormalBuffer(GLuint &texture)
 
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB32F, SCR_HEIGHT, SCR_WIDTH, 0,GL_RGB, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, 0);
+
+    // Generate mipmaps
+    glGenerateMipmap(GL_TEXTURE_2D);
 
     glDrawBuffer(GL_COLOR_ATTACHMENT0); // No color buffer is drawn to.
 
@@ -292,6 +358,11 @@ void setupNormalBuffer(GLuint &texture)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+void cleanupNormalBuffer(GLuint &texture) {
+    glDeleteTextures(1, &texture);
+    glDeleteFramebuffers(1, &FramebufferName);
+}
+
 void setupVertexBuffer(GLuint &texture)
 {
     glGenFramebuffers(1, &FramebufferName);
@@ -301,10 +372,15 @@ void setupVertexBuffer(GLuint &texture)
 
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB32F, SCR_HEIGHT, SCR_WIDTH, 0,GL_RGB, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, 0);
+
+    // Generate mipmaps
+    // glGenerateMipmap(GL_TEXTURE_2D);
 
     glDrawBuffer(GL_COLOR_ATTACHMENT0); // No color buffer is drawn to.
 
@@ -316,6 +392,11 @@ void setupVertexBuffer(GLuint &texture)
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void cleanupVertexBuffer(GLuint &texture) {
+    glDeleteTextures(1, &texture);
+    glDeleteFramebuffers(1, &FramebufferName);
 }
 
 void rendertoNormalTexture(Shader &shader, Model &model, int index, glm::vec3 lightDir, GLuint texture)
@@ -333,10 +414,10 @@ void rendertoNormalTexture(Shader &shader, Model &model, int index, glm::vec3 li
     // glEnable(GL_DEPTH_TEST);
     // MVP matrices to be used in the vertex shader
     glm::mat4 lightView = glm::lookAt(radius*normalize(lightDir), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    float left = -3.0f, right = 3.0f, bottom = -3.0f, top = 3.0f;
+    // float leftBoundary = -2.5f, rightBoundary = 2.5f, bottomBoundary = -2.5f, topBoundary = 2.5f;
     // calculate the length of the light direction vector
     float distToCamera = glm::length(radius*normalize(lightDir));
-    glm::mat4 lightProjection = glm::ortho(left, right, bottom, top, nearPlane, farPlane);
+    glm::mat4 lightProjection = glm::ortho(leftBoundary, rightBoundary, bottomBoundary, topBoundary, nearPlane, farPlane);
     glm::mat4 lightSpaceMatrix = lightProjection * lightView;
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     lightSpaceMatrices[index] = lightSpaceMatrix;
@@ -359,6 +440,8 @@ void rendertoNormalTexture(Shader &shader, Model &model, int index, glm::vec3 li
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
 
+    if (DoOnce)
+    {
     // For testing
     GLfloat* pixels_float = new GLfloat[SCR_HEIGHT * SCR_WIDTH * 3];
     unsigned char* pixels = new unsigned char[SCR_HEIGHT * SCR_WIDTH * 3];
@@ -374,7 +457,7 @@ void rendertoNormalTexture(Shader &shader, Model &model, int index, glm::vec3 li
     filename << "output/normalTexture" << texture << ".png";
     std::string fullPath = FileSystem::getPath(filename.str());
     stbi_write_png(fullPath.c_str(), SCR_WIDTH, SCR_HEIGHT, 3, pixels, 0);
-
+    }
 
 }
 
@@ -393,10 +476,10 @@ void rendertoVertexTexture(Shader &shader, Model &model, int index, glm::vec3 li
     // glEnable(GL_DEPTH_TEST);
     // MVP matrices to be used in the vertex shader
     glm::mat4 lightView = glm::lookAt(radius*normalize(lightDir), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    float left = -3.0f, right = 3.0f, bottom = -3.0f, top = 3.0f;
+    // float leftBoundary = -2.5f, rightBoundary = 2.5f, bottomBoundary = -2.5f, topBoundary = 2.5f;
     // calculate the length of the light direction vector
     float distToCamera = glm::length(radius*normalize(lightDir));
-    glm::mat4 lightProjection = glm::ortho(left, right, bottom, top, nearPlane, farPlane);
+    glm::mat4 lightProjection = glm::ortho(leftBoundary, rightBoundary, bottomBoundary, topBoundary, nearPlane, farPlane);
     glm::mat4 lightSpaceMatrix = lightProjection * lightView;
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     lightSpaceMatrices[index] = lightSpaceMatrix;
@@ -421,6 +504,8 @@ void rendertoVertexTexture(Shader &shader, Model &model, int index, glm::vec3 li
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
 
+    if (DoOnce)
+    {
     // For testing
     GLfloat* pixels_float = new GLfloat[SCR_HEIGHT * SCR_WIDTH * 3];
     unsigned char* pixels = new unsigned char[SCR_HEIGHT * SCR_WIDTH * 3];
@@ -437,6 +522,7 @@ void rendertoVertexTexture(Shader &shader, Model &model, int index, glm::vec3 li
 
     std::string fullPath = FileSystem::getPath(filename.str());
     stbi_write_png(fullPath.c_str(), SCR_WIDTH, SCR_HEIGHT, 3, pixels, 0);
+    }
 }
 
 void rendertoDepthTexture(Shader &shader, Model &model, int index, glm::vec3 lightDir, GLuint texture)
@@ -457,10 +543,10 @@ void rendertoDepthTexture(Shader &shader, Model &model, int index, glm::vec3 lig
     // glEnable(GL_DEPTH_TEST);
     // MVP matrices to be used in the vertex shader
     glm::mat4 lightView = glm::lookAt(radius*normalize(lightDir), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    float left = -3.0f, right = 3.0f, bottom = -3.0f, top = 3.0f;
+    // float leftBoundary = -2.5f, rightBoundary = 2.5f, bottomBoundary = -2.5f, topBoundary = 2.5f;
     // calculate the length of the light direction vector
     float distToCamera = glm::length(radius*normalize(lightDir));
-    glm::mat4 lightProjection = glm::ortho(left, right, bottom, top, nearPlane, farPlane);
+    glm::mat4 lightProjection = glm::ortho(leftBoundary, rightBoundary, bottomBoundary, topBoundary, nearPlane, farPlane);
     glm::mat4 lightSpaceMatrix = lightProjection * lightView;
     shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     lightSpaceMatrices[index] = lightSpaceMatrix;
@@ -611,14 +697,14 @@ int main(void)
         }
 
     // Setting the viewport size
-    // The first two parameters of glViewport set the location of the lower left corner of the window.
+    // The first two parameters of glViewport set the location of the lower leftBoundary corner of the window.
     // The third and fourth parameter set the width and height of the rendering window in pixels, which we set equal to GLFW's window size.
     // multiple by 2 due to HiDPI display (otherwise image is not centered and too small)
     // glViewport(0, 0, 640*2, 480*2);
 
-    // Registering the callback function on window resize to make sure OpenGL renders the image in the right size whenever the window is resized.
+    // Registering the callback function on window resize to make sure OpenGL renders the image in the rightBoundary size whenever the window is resized.
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    Shader ourShader(FileSystem::getPath("src/shaders/vertexShader.vs").c_str(), FileSystem::getPath("src/shaders/fragmentShader2.fs").c_str());
+    Shader ourShader(FileSystem::getPath("src/shaders/vertexShader.vs").c_str(), FileSystem::getPath("src/shaders/model3.fs").c_str());
     Shader FBOShader(FileSystem::getPath("src/shaders/vertexShader2.vs").c_str(), FileSystem::getPath("src/shaders/FBOfragmentShader.fs").c_str());
     //normals
     Shader FBOShader2(FileSystem::getPath("src/shaders/vertexShader2.vs").c_str(), FileSystem::getPath("src/shaders/FBOfragmentShader2.fs").c_str());
@@ -643,7 +729,7 @@ int main(void)
 
     // load models
     // -----------
-    Model ourModel(FileSystem::getPath("resources/objects/sphere.obj"));
+    Model ourModel(FileSystem::getPath("resources/objects/grain3.obj"));
 
 
     
@@ -722,11 +808,31 @@ int main(void)
             // printf("Depth texture saved\n");
         }
         
+        
+
+        for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
+        {
+            // float distToCamera = glm::length(radius*normalize(lightDirections[i]));
+            // lightPlanes[i] = glm::vec2(distToCamera - objectRadius, distToCamera + objectRadius);
+            
+            // setupNormalBuffer(normalTextures[i]);
+            rendertoNormalTexture(FBOShader2, ourModel, i, lightDirections[i], normalTextures[i]);
+            
+            // setupVertexBuffer(vertexTextures[i]);
+            rendertoVertexTexture(FBOShader3, ourModel, i, lightDirections[i], vertexTextures[i]);
+
+            // bind textures to be used in the shader
 
 
+        }
 
-        // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        rendertoSDR(ourShader, ourModel);
+
+        
+
+
         // glBindFramebuffer(GL_FRAMEBUFFER, FramebufferName);
         // FBOShader.use();
         // //maybe?
@@ -809,6 +915,12 @@ int main(void)
         glfwPollEvents();
 
         CalculateFrameRate(window);
+    }
+    // cleanup
+    for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
+    {
+        cleanupNormalBuffer(normalTextures[i]);
+        cleanupVertexBuffer(vertexTextures[i]);
     }
 
     glfwTerminate();

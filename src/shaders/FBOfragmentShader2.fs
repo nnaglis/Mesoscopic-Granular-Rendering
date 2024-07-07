@@ -3,11 +3,9 @@
 // Ouput data
 out vec4 FragColor;
 
+in vec3 Fnormal;
+
 void main()
 {             
-    // Not really needed, OpenGL does it anyway
-    // fragmentdepth = gl_FragCoord.z;
-    vec3 result = vec3(1.0);
-    FragColor = vec4(result, 1.0);
-    
+    FragColor = vec4((normalize(Fnormal)), 1.0);
 }
