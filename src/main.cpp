@@ -94,8 +94,6 @@ void setupColorBuffer()
     glGenTextures(1, &colorBuffer);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, colorBuffer);
     glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, MSAA_SampleCount, GL_RGB32F, SCR_WIDTH, SCR_HEIGHT, GL_TRUE);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, colorBuffer, 0);
     
 
@@ -410,8 +408,6 @@ void rendertoNormalTexture(Shader &shader, Model &model, int index, glm::vec3 li
     //TODO probably do not need to do this again
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
-    // glEnable(GL_DEPTH_TEST);
     // MVP matrices to be used in the vertex shader
     glm::mat4 lightView = glm::lookAt(radius*normalize(lightDir), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     // float leftBoundary = -2.5f, rightBoundary = 2.5f, bottomBoundary = -2.5f, topBoundary = 2.5f;
@@ -586,18 +582,6 @@ void rendertoDepthTexture(Shader &shader, Model &model, int index, glm::vec3 lig
     filename << "output/depthTexture" << texture << ".png";
     std::string fullPath = FileSystem::getPath(filename.str());
     stbi_write_png(fullPath.c_str(), SCR_WIDTH, SCR_HEIGHT, 1, pixels, 0);
-
-    // stbi_write_png(FileSystem::getPath("output/depthTexture.png").c_str(), SCR_WIDTH, SCR_HEIGHT, 1, pixels, 0);
-    // saveHDRImage(FileSystem::getPath("output/depthTexture.exr").c_str(), pixels_float);
-
-
-
-
-
-
-
-
-
 }
 
 // Registering a callback function that gets called each time the window is resized.
@@ -617,43 +601,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 void CalculateFrameRate(GLFWwindow* window);
 void key_callback(GLFWwindow* window);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-// unsigned int loadTexture(const char *path);
-// void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
-
-
-// unsigned int loadTexture(const char *path)
-// {
-//     unsigned int texture;
-//     glGenTextures(1, &texture);
-//     glBindTexture(GL_TEXTURE_2D, texture);
-//     // set the texture wrapping parameters
-//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// set texture wrapping to GL_REPEAT (default wrapping method)
-//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-//     // set texture filtering parameters
-//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-//     // load and generate the texture
-//     int width, height, nrChannels;
-//     unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
-//     std::cout << "Width: " << width << " Height: " << height << " nrChannels: " << nrChannels << std::endl;
-//     if (data)
-//     {
-//         // generate the texture
-//         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-//         // generate the mipmap
-//         glGenerateMipmap(GL_TEXTURE_2D);
-//     }
-//     else
-//     {
-//         std::cout << "Failed to load texture" << std::endl;
-//     }
-//     // free the image memory
-//     stbi_image_free(data);
-//     return texture;
-// }
-
-//function to 
 
 int main(void)
 {
@@ -695,12 +643,6 @@ int main(void)
             std::cout << "Failed to initialize GLAD" << std::endl;
             return -1; 
         }
-
-    // Setting the viewport size
-    // The first two parameters of glViewport set the location of the lower leftBoundary corner of the window.
-    // The third and fourth parameter set the width and height of the rendering window in pixels, which we set equal to GLFW's window size.
-    // multiple by 2 due to HiDPI display (otherwise image is not centered and too small)
-    // glViewport(0, 0, 640*2, 480*2);
 
     // Registering the callback function on window resize to make sure OpenGL renders the image in the rightBoundary size whenever the window is resized.
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
@@ -756,11 +698,6 @@ int main(void)
     //for each light source, render the scene depth to a texture
     for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
     {
-        
-        
-        
-        // float distToCamera = glm::length(radius*normalize(lightDirections[i]));
-        // lightPlanes[i] = glm::vec2(distToCamera - objectRadius, distToCamera + objectRadius);
         setupNormalBuffer(normalTextures[i]);
         rendertoNormalTexture(FBOShader2, ourModel, i, lightDirections[i], normalTextures[i]);
         setupVertexBuffer(vertexTextures[i]);
@@ -812,92 +749,16 @@ int main(void)
 
         for (unsigned int i = 0; i < sizeof(lightDirections)/sizeof(lightDirections[0]); i++)
         {
-            // float distToCamera = glm::length(radius*normalize(lightDirections[i]));
-            // lightPlanes[i] = glm::vec2(distToCamera - objectRadius, distToCamera + objectRadius);
-            
-            // setupNormalBuffer(normalTextures[i]);
             rendertoNormalTexture(FBOShader2, ourModel, i, lightDirections[i], normalTextures[i]);
-            
-            // setupVertexBuffer(vertexTextures[i]);
             rendertoVertexTexture(FBOShader3, ourModel, i, lightDirections[i], vertexTextures[i]);
-
-            // bind textures to be used in the shader
-
-
         }
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         rendertoSDR(ourShader, ourModel);
 
-        
-
-
-        // glBindFramebuffer(GL_FRAMEBUFFER, FramebufferName);
-        // FBOShader.use();
-        // //maybe?
-        // glViewport(0, 0, 800, 600);
-
-        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        // // Drawing the model
-        // glm::mat4 model = glm::mat4(1.0f); // start with an identity matrix
-        // glm::mat4 lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, nearPlane, farPlane);
-        // glm::mat4 lightView = glm::lookAt(lightDir, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        // glm::mat4 lightSpaceMatrix = lightProjection * lightView;
-        // FBOShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
-        // FBOShader.setMat4("model", model);
-
-        // ourModel.Draw(FBOShader);
-        // glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        // glActiveTexture(GL_TEXTURE0);
-        // glBindTexture(GL_TEXTURE_2D, depthTexture);
-
-        // GLfloat* pixels_float = new GLfloat[800 * 600]; // Assuming width and height are the dimensions of the texture
-        // unsigned char* pixels = new unsigned char[800 * 600];
-        // glGetTexImage(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT, pixels_float);
-        // for (int i = 0; i < 800 * 600; i++)
-        // {
-        //     // cout << pixels_float[i] << " ";
-        //     pixels[i] = static_cast<unsigned char>(pixels_float[i] * 255.0f);
-        // }
-
-        // // Save texture data to PNG using stb_image_write library
-        // stbi_write_png("depthTexture.png", 800, 600, 1, pixels, 0);
-
-        /* Render here */
-        // glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
-        
-    //     ourShader.use();
-    //     // glViewport(0, 0, 800, 600);
-    //     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    //     // MVP matrices to be used in the vertex shader
-    //     ourShader.setMat4("projection", projectionMatrix);
-    //     ourShader.setMat4("view", viewMatrix);
-        
-    //     // Drawing the sphere
-    //         // renderSphere();
-
-    //     // Drawing the plane
-    //         // renderPlane();
-
-    //     // Drawing the model
-    //     glm::mat4 model = glm::mat4(1.0f); // start with an identity matrix
-    // // model = glm::scale(model, glm::vec3(200.0f, 1.0f, 200.0f)); // apply scaling
-    //     ourShader.setMat4("model", model);
-    //     ourShader.setMat3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(model))));
-    //     ourShader.setVec3("lightDir", normalize(lightDir));
-    //     ourShader.setVec3("eyePos", cameraPos);
-    //     // glBindVertexArray(planeVAO);
-    //     // glActiveTexture(GL_TEXTURE0);
-    //     // glBindTexture(GL_TEXTURE_2D, planeTexture);
-    //     ourModel.Draw(ourShader);
-
-
         //check for key input
         key_callback(window);
-        //adjust point size
-        // glPointSize(10.0f);
 
         //check for mouse scroll input
         glfwSetScrollCallback(window, scroll_callback);

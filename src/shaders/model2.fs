@@ -128,7 +128,6 @@ float D(vec3 w, vec3 h, vec3 normal, float roughness)
     return Distribution_GGX(dot(h, normal), roughness);
 }
 
-// taken from imm6816.pdf (as the source that it cites there, i cannot have access to)
 float A(float n)
 {
     float C_1 = 0.0;
@@ -183,10 +182,7 @@ vec3 SingleScattering(vec3 albedo, float Fresnel, vec3 normal, vec3 wi, vec3 wo)
     vec3 nom = albedo * Fresnel * hgPhaseFunction(wi, wo, g);
     float denom = abs(dot(normal, wi)) + abs(dot(normal, wo));
     if (denom == 0.0) return vec3(0.0);
-    // vec3 single_scattering = albedo * Fresnel * hgPhaseFunction(normalize(wi), wo) / ( abs(dot(normal, normalize(wi))) + abs(dot(normal, wo)) );
-
     return nom/denom;
-    // return vec3(dot(wi, wo));
 }
 
 
@@ -213,8 +209,6 @@ float LinearizeDepth(float depth, float nearPlane, float farPlane) {
 
 vec3 BSSRDF_distance(float r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_prime, float g, float A)
 {
-    // vec3 sigma_s_prime = sigma_s * (1.0 - g);
-    // vec3 sigma_t_prime = sigma_s_prime + sigma_a;
     vec3 D = 1.0 / (3.0 * sigma_t_prime);
     vec3 sigma_tr = sqrt(sigma_a / D);
     vec3 z_r = 1.0 / sigma_t_prime;
@@ -312,9 +306,6 @@ void main()
 
         vec3 incidentNormal = texture(normalTextures[i], projCoords.xy).xyz;
 
-        // vec3 frontPos = texture(vertexTextures[i], vec2(0.5,0.5)).xyz;
-
-        // vec3 incidentNormal = texture(normalTextures[i], vec2(0.5,0.5)).xyz;
         float thickness = length((FragPos - frontPos)*thickness_scale);
         // thickness = 2.4*thickness_scale + thickness/2.0;
         float r = 2.4 * thickness_scale;
@@ -366,7 +357,6 @@ void main()
             area =  PI * r * r;
         }
         resultFcolor += ((Lo*area)+model_1)*lightRadiance;
-        // resultFcolor += vec3(area);
     }
     FragColor = vec4(resultFcolor, 1.0);
 }

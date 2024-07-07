@@ -133,7 +133,6 @@ float D(vec3 w, vec3 h, vec3 normal, float roughness)
     return Distribution_GGX(dot(h, normal), roughness);
 }
 
-// taken from imm6816.pdf (as the source that it cites there, i cannot have access to)
 float A(float n)
 {
     float C_1 = 0.0;
@@ -211,9 +210,6 @@ vec3 BSSRDF_distance(float r, vec3 sigma_a, vec3 sigma_s, float g, float A)
     vec3 d_r = sqrt(z_r * z_r + r * r);
     vec3 d_v = sqrt(z_v * z_v + r * r);
 
-
-
-    //accoridng to Student paper
     vec3 albedo_prime = sigma_s_prime / sigma_t_prime;
     
 
@@ -221,30 +217,6 @@ vec3 BSSRDF_distance(float r, vec3 sigma_a, vec3 sigma_s, float g, float A)
     vec3 virt_source = z_v * (1.0 + sigma_tr * d_v) / (d_v * d_v * d_v * sigma_t_prime) * exp(-sigma_tr * d_v);
 
     return albedo_prime / (4.0 * PI) * (real_source + virt_source);
-
-
-
-//     float std_bssrdf(float r, vec4 props) {
-//     float sigma_s = props.x;
-//     float sigma_a = props.y;
-//     float g = props.z;
-//     float A = props.w;
-
-//     float sigma_t_p = sigma_s * (1.0 - g) + sigma_a;
-//     float D = 1.0 / (3.0 * sigma_t_p);
-//     float sigma_tr = sqrt(sigma_a / D);
-//     float zr = 3.0 * D;
-//     float zv = zr + 4.0 * A * D;
-//     float dr = sqrt(zr * zr + r * r);
-//     float dv = sqrt(zv * zv + r * r);
-
-//     float real = zr * (1.0 + sigma_tr * dr) / (dr * dr * dr) * exp(-sigma_tr * dr);
-//     float virt = zv * (1.0 + sigma_tr * dv) / (dv * dv * dv) * exp(-sigma_tr * dv);
-//     float albedo = 1.0 - sigma_a / zr;
-
-//     return albedo * M_1_4PIPI * (real + virt);
-// }
-
 }
 
 void main()
@@ -258,15 +230,12 @@ void main()
     material.g = g;
     material.n = n_material;
     material.roughness = roughness;
-    // material.reflectance = reflectance;
 
     // Calculating the albedo
-    // vec3 sigma_s = sigma_s_prime / (1.0 - g);
     vec3 sigma_t = sigma_s + sigma_a;
     material.albedo = sigma_s / sigma_t;
 
     // Calculating the reduced albedo
-    // vec3 sigma_s_prime = ( 1.0 - g ) * sigma_s;
     vec3 sigma_t_prime = material.sigma_s_prime + sigma_a;
     material.albedo_prime = material.sigma_s_prime / sigma_t_prime;
 
@@ -301,8 +270,6 @@ void main()
             }
             //TODO adding bias to projcoords.xy components
             
-            // float depth = texture(depthMap, projCoords.xy).r; // The depth from the texture
-
 
         vec3 lightDir = normalize(lightDirections[i]);
         vec3 lightRadiance = lightRadiances[i];
@@ -333,13 +300,8 @@ void main()
             
             // full Fresnel term
             float Fresnel = Ft_1 * Ft_2;
-        //single scattering term
-        // vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(cos_incident,0.0);
-        // vec3 single_scattering = SingleScattering(material.albedo, 1.0-Fr_1, Fnormal, wi, wo) * max(cos_incident,0.0);
 
         vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(cos_incident,0.0);
-
-
 
         // Full BSSRDF approximation with BRDF
         vec3 BSSRDF = (single_scattering + Fresnel*DiffuseReflectance/PI);
@@ -347,8 +309,7 @@ void main()
             // 1/PI is a normalization factor to ensure that total energy is conserved
         vec3 diffuse = Li / PI * reflectance;
 
-        
-
+    
         // specular lighting
             vec3 halfwayDir = normalize(wi + wo);
             // Normal Distribution Function

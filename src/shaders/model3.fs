@@ -74,7 +74,6 @@ float hgPhaseFunction(vec3 wi, vec3 wo, float g) {
     float numerator = 1.0 - g * g;
     float denominator = pow(1.0 + g * g - 2.0 * g * cosTheta, 1.5);
     return (1.0 / (4.0 * PI)) * (numerator / denominator);
-    // return cosTheta;
 }
 
 
@@ -97,7 +96,6 @@ float Rp(float cosI, float cosT, float n1, float n2) {
 // Trowbridge-Reitz GGX Normal Distribution Function
 float Distribution_GGX(float NdotH, float roughness)
 {
-    // NdotH = max(NdotH, 0.0);
     float a2 = roughness*roughness;
     float NdotH2 = NdotH*NdotH;
     float denom = (NdotH2 * (a2 - 1.0) + 1.0);
@@ -133,7 +131,6 @@ float D(vec3 w, vec3 h, vec3 normal, float roughness)
     return Distribution_GGX(dot(h, normal), roughness);
 }
 
-// taken from imm6816.pdf (as the source that it cites there, i cannot have access to)
 float A(float n)
 {
     float C_1 = 0.0;
@@ -188,10 +185,8 @@ vec3 SingleScattering(vec3 albedo, float Fresnel, vec3 normal, vec3 wi, vec3 wo)
     vec3 nom = albedo * Fresnel * hgPhaseFunction(wi, wo, g);
     float denom = abs(dot(normal, wi)) + abs(dot(normal, wo));
     if (denom == 0.0) return vec3(0.0);
-    // vec3 single_scattering = albedo * Fresnel * hgPhaseFunction(normalize(wi), wo) / ( abs(dot(normal, normalize(wi))) + abs(dot(normal, wo)) );
 
     return nom/denom;
-    // return vec3(dot(wi, wo));
 }
 
 
@@ -201,12 +196,9 @@ vec3 SingleScattering2(vec3 wi, vec3 wo, vec3 Fnormal, float Fresnel, vec3 sigma
     float phase = hgPhaseFunction(wi, wo, g);
     // Attenuation
     
-    // attenuation = vec3(1.0);
     float cosTheta_o = abs(dot(Fnormal, wo));
-    // float cosTheta_o = 1.0;
 
     vec3 t_crit = 1.0 / sigma_t;
-    // float cosTheta_o = 1.0;
     vec3 d = sqrt(length(r) * length(r) + t_crit * t_crit);
 
     vec3 attenuation = exp(-sigma_t * (d+t_crit));
@@ -215,7 +207,6 @@ vec3 SingleScattering2(vec3 wi, vec3 wo, vec3 Fnormal, float Fresnel, vec3 sigma
     vec3 scattering = albedo * attenuation / (d * d) * phase  * Fresnel * cosTheta_o ;
 
     return scattering;
-    // return vec3(phase);
 }
 
 float LinearizeDepth(float depth, float nearPlane, float farPlane) {
@@ -226,8 +217,6 @@ float LinearizeDepth(float depth, float nearPlane, float farPlane) {
 
 vec3 BSSRDF_distance(vec3 r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_prime, float g, float A)
 {
-    // vec3 sigma_s_prime = sigma_s * (1.0 - g);
-    // vec3 sigma_t_prime = sigma_s_prime + sigma_a;
     vec3 D = 1.0 / (3.0 * sigma_t_prime);
     vec3 sigma_tr = sqrt(sigma_a / D);
     vec3 z_r = 1.0 / sigma_t_prime;
@@ -235,14 +224,7 @@ vec3 BSSRDF_distance(vec3 r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_prime
     float r_scalar = length(r)*1.0;
     vec3 d_r = sqrt(z_r * z_r + length(r) * length(r));
     vec3 d_v = sqrt(z_v * z_v + length(r) * length(r));
-    // float d_r = sqrt(z_r_scalar * z_r_scalar + r_scalar * r_scalar);
-    // float d_v = sqrt(z_v_scalar * z_v_scalar + r_scalar * r_scalar);
 
-
-
-    //accoridng to Student paper
-    // vec3 albedo_prime = sigma_s_prime / sigma_t_prime;
-    
 
     vec3 real_source = (sigma_tr * d_r + 1.0) / (d_r * d_r * d_r * sigma_t_prime) * exp(-sigma_tr * d_r);
     vec3 virt_source = z_v * (1.0 + sigma_tr * d_v) / (d_v * d_v * d_v * sigma_t_prime) * exp(-sigma_tr * d_v);
@@ -252,20 +234,12 @@ vec3 BSSRDF_distance(vec3 r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_prime
 
 vec3 BSSRDF_distance_old(vec3 r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_prime, float g, float A)
 {
-    // vec3 sigma_s_prime = sigma_s * (1.0 - g);
-    // vec3 sigma_t_prime = sigma_s_prime + sigma_a;
     vec3 D = 1.0 / (3.0 * sigma_t_prime);
     vec3 sigma_tr = sqrt(sigma_a / D);
     vec3 z_r = 1.0 / sigma_t_prime;
     vec3 z_v = z_r + 4.0 * A * D;
     vec3 d_r = sqrt(z_r * z_r + r * r);
     vec3 d_v = sqrt(z_v * z_v + r * r);
-
-
-
-    //accoridng to Student paper
-    // vec3 albedo_prime = sigma_s_prime / sigma_t_prime;
-    
 
     vec3 real_source = (sigma_tr * d_r + 1.0) / (d_r * d_r * d_r * sigma_t_prime) * exp(-sigma_tr * d_r);
     vec3 virt_source = z_v * (1.0 + sigma_tr * d_v) / (d_v * d_v * d_v * sigma_t_prime) * exp(-sigma_tr * d_v);
@@ -306,13 +280,9 @@ void main()
     material.roughness = roughness;
     // material.reflectance = reflectance;
 
-    // Calculating the albedo
-    // vec3 sigma_s = sigma_s_prime / (1.0 - g);
     vec3 sigma_t = sigma_s + sigma_a;
     material.albedo = sigma_s / sigma_t;
 
-    // Calculating the reduced albedo
-    // vec3 sigma_s_prime = ( 1.0 - g ) * sigma_s;
     material.sigma_t_prime = material.sigma_s_prime + material.sigma_a;
     material.albedo_prime = material.sigma_s_prime / material.sigma_t_prime;
 
@@ -451,23 +421,6 @@ void main()
                 Lo = Lo / numSamples * PI * (r*r);
                 // Lo = vec3(numSamples);
             }
-            
-
-               
-
-            // //single scattering term
-            // // vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(cos_incident,0.0);
-            // // vec3 single_scattering = SingleScattering(material.albedo, 1.0-Fr_1, Fnormal, wi, wo) * max(cos_incident,0.0);
-
-        // vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(cos_incident,0.0);
-
-
-
-        // // Full BSSRDF approximation with BRDF
-        // vec3 BSSRDF = (single_scattering + Fresnel*DiffuseReflectance/PI);
-        // //diffuse lighting
-        //     // 1/PI is a normalization factor to ensure that total energy is conserved
-        // vec3 diffuse = Li / PI * reflectance;
 
          
         // find Fresnel term for in-scattering n1 to n2
