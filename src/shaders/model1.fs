@@ -23,8 +23,8 @@ uniform vec3 eyePos;
 const float PI = 3.14159265359;
 
 // Predefined material properties
-uniform vec3 sigma_s = vec3(1.0);
-uniform vec3 sigma_a = vec3(0.1);
+uniform vec3 sigma_s = vec3(2.29, 2.39, 1.97);
+uniform vec3 sigma_a = vec3(0.0030, 0.0034, 0.046);
 uniform float g = 0.0;
 uniform float n_material = 1.0;
 uniform float roughness = 0.00;
@@ -64,7 +64,7 @@ struct MaterialProperties {
 // Henyey-Greenstein phase function
 float hgPhaseFunction(vec3 wi, vec3 wo) {
     float cosTheta = dot(wi, wo);
-    float denom = 1.0 + g * g + 2.0 * g * cosTheta;
+    float denom = 1.0 + g * g - 2.0 * g * cosTheta;
     if (denom == 0.0) return 0.0;
     return 1.0 / (4.0 * PI) * (1.0 - g * g) / pow(denom, 1.5);
 }
@@ -152,10 +152,10 @@ float A(float n)
             C_1 = two_C_1 / 2.0;
             C_2 = three_C_2 / 3.0;
         }
-    float C_e = (1.0/ 2.0) * (1 - 3 * C_2);
-    float C_phi = (1.0 / 4.0) * (1 - 2 * C_1);
-    float nom =  1 - C_e;
-    float denom = 2 * C_phi;
+    float C_e = (1.0/ 2.0) * (1.0 - C_2);
+    float C_phi = (1.0 / 4.0) * (1.0 - C_1);
+    float nom =  1.0 - C_e;
+    float denom = 2.0 * C_phi;
     if (denom == 0.0) return 0.0;
     return nom/denom;
 }
@@ -164,7 +164,7 @@ float A(float n)
 vec3 DiffuseReflectance(float n, vec3 sigma_s_prime, vec3 sigma_a)
 {
     // Diffuse fresnel reflection
-        float Fdr = - 1.440 / (n * n) + 0.710 / n + 0.668 + 0.0636 * n;
+        // float Fdr = - 1.440 / (n * n) + 0.710 / n + 0.668 + 0.0636 * n;
         // float A = (1.0 + Fdr) / (1.0 - Fdr);
         float A = A(n);
     // Reduced albedo
@@ -323,7 +323,7 @@ void main()
             float Fr_1 = FresnelReflection(1.0, material.n, max(cos_refracted,0.0), max(cos_incident, 0.0));
             float Ft_1 = 1.0 - Fr_1;
 
-            // find Fresnel term for out-scattering n2 to n1
+        // find Fresnel term for out-scattering n2 to n1
             float cos_refracted_2 = dot(Fnormal, wo);
             float sin_refracted_2 = sqrt(1.0 - cos_refracted_2 * cos_refracted_2);
             float sin_incident_2 = sin_refracted_2 / material.n;

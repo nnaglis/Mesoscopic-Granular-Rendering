@@ -26,8 +26,8 @@ uniform vec3 eyePos;
 const float PI = 3.14159265359;
 
 // Predefined material properties
-uniform vec3 sigma_s_prime = vec3(0.5);
-uniform vec3 sigma_a = vec3(0.5);
+uniform vec3 sigma_s_prime = vec3(0.1);
+uniform vec3 sigma_a = vec3(0.9);
 uniform float g = 0.0;
 uniform float n_material = 1.0;
 uniform float roughness = 0.00;
@@ -159,7 +159,7 @@ float A(float n)
 vec3 DiffuseReflectance(float n, vec3 sigma_s_prime, vec3 sigma_a)
 {
     // Diffuse fresnel reflection
-        float Fdr = - 1.440 / (n * n) + 0.710 / n + 0.668 + 0.0636 * n;
+        // float Fdr = - 1.440 / (n * n) + 0.710 / n + 0.668 + 0.0636 * n;
         // float A = (1.0 + Fdr) / (1.0 - Fdr);
         float A = A(n);
     // Reduced albedo
@@ -211,7 +211,7 @@ float LinearizeDepth(float depth, float nearPlane, float farPlane) {
     return (2.0 * nearPlane * farPlane) / (farPlane + nearPlane - z * (farPlane - nearPlane));
 }
 
-vec3 BSSRDF_distance(vec3 r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_prime, float g, float A)
+vec3 BSSRDF_distance(float r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_prime, float g, float A)
 {
     // vec3 sigma_s_prime = sigma_s * (1.0 - g);
     // vec3 sigma_t_prime = sigma_s_prime + sigma_a;
@@ -219,8 +219,8 @@ vec3 BSSRDF_distance(vec3 r, vec3 albedo_prime, vec3 sigma_a, vec3 sigma_t_prime
     vec3 sigma_tr = sqrt(sigma_a / D);
     vec3 z_r = 1.0 / sigma_t_prime;
     vec3 z_v = z_r + 4.0 * A * D;
-    vec3 d_r = sqrt(z_r * z_r + length(r) * length(r));
-    vec3 d_v = sqrt(z_v * z_v + length(r) * length(r));
+    vec3 d_r = sqrt(z_r * z_r + r * r);
+    vec3 d_v = sqrt(z_v * z_v + r * r);
 
     vec3 real_source = (sigma_tr * d_r + 1.0) / (d_r * d_r * d_r * sigma_t_prime) * exp(-sigma_tr * d_r);
     vec3 virt_source = z_v * (1.0 + sigma_tr * d_v) / (d_v * d_v * d_v * sigma_t_prime) * exp(-sigma_tr * d_v);
@@ -315,7 +315,14 @@ void main()
         // vec3 frontPos = texture(vertexTextures[i], vec2(0.5,0.5)).xyz;
 
         // vec3 incidentNormal = texture(normalTextures[i], vec2(0.5,0.5)).xyz;
-        vec3 thickness = (FragPos - frontPos)*thickness_scale;
+        float thickness = length((FragPos - frontPos)*thickness_scale);
+        // thickness = 2.4*thickness_scale + thickness/2.0;
+        float r = 2.4 * thickness_scale;
+        //distance to centroid of a hemisphere of the incident area
+        if (dot(Fnormal, wi) <= 0.0)
+        {
+            thickness = thickness/2.0 + 3.0*r/8.0;
+        }
     
             float cos_incident = dot(incidentNormal, wi);
 
@@ -338,19 +345,28 @@ void main()
             float Fresnel = Ft_1 * Ft_2;
 
             // ORIGINAL
-            // if (dot (Fnormal, wi) <= 0.0)
-            // {
+            if (dot (Fnormal, wi) <= 0.0)
+            {
                 Lo += 1.0/PI * BSSRDF_distance(thickness, material.albedo_prime, material.sigma_a, material.sigma_t_prime, g, A(material.n)) * Fresnel * dot(incidentNormal, wi);
-            // }
-            
-    
-        vec3 single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(dot(Fnormal, wi),0.0);
+            }
 
-        // float r = length(thickness)/2.0;
-        float r = 2.4 * thickness_scale/2.0;
-        // float area = PI * r * r;
-        float area =   r;
-        resultFcolor += ((Lo*area)+single_scattering)*lightRadiance;
+        vec3 single_scattering = vec3(0.0);
+        vec3 model_1 = vec3(0.0);
+        if (dot(Fnormal, wi) >= 0.0)
+        {
+            single_scattering = SingleScattering(material.albedo, Fresnel, Fnormal, wi, wo) * max(dot(Fnormal, wi), 0.0);
+            model_1 = (Fresnel*DiffuseReflectance/PI+ single_scattering) * max(dot(Fnormal, wi), 0.02) ;
+        }
+        
+
+
+        float area = 0.000;
+        if (dot(Fnormal, wi) < 0.00)
+        {
+            area =  PI * r * r;
+        }
+        resultFcolor += ((Lo*area)+model_1)*lightRadiance;
+        // resultFcolor += vec3(area);
     }
     FragColor = vec4(resultFcolor, 1.0);
 }

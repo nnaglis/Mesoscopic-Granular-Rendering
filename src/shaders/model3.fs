@@ -26,13 +26,13 @@ uniform vec3 eyePos;
 const float PI = 3.14159265359;
 
 // Predefined material properties
-uniform vec3 sigma_s_prime = vec3(0.9);
-uniform vec3 sigma_a = vec3(0.1);
+uniform vec3 sigma_s_prime = vec3(0.8);
+uniform vec3 sigma_a = vec3(0.2);
 uniform float g = 0.0;
-uniform float n_material = 1.0;
-uniform float roughness = 0.00;
+uniform float n_material = 1.6;
+uniform float roughness = 0.03;
 
-uniform float thickness_scale = 5.0;
+uniform float thickness_scale = 4.0;
 
 // plane near and far
 uniform float nearPlane;
@@ -405,6 +405,13 @@ void main()
             if (cos_incident <= 0.0) {
                 continue;
             }
+
+            // continue if it is the same point as the current point
+            if (dot(Fnormal, incidentNormal) > 0.999) {
+                numSamples -= 1;
+                continue;
+            }
+
             numSamples += 1;
 
             // find Fresnel term for in-scattering n1 to n2
@@ -441,7 +448,7 @@ void main()
     }
             if (numSamples != 0) {
                 float r = 2.4 * thickness_scale;
-                Lo = Lo / numSamples * PI * (r*r)*2;
+                Lo = Lo / numSamples * PI * (r*r);
                 // Lo = vec3(numSamples);
             }
             
@@ -501,7 +508,7 @@ void main()
 
         // resultFcolor += (Lo);
         // resultFcolor += Lo;
-        resultFcolor += (Lo+BRDF)*lightRadiance;
+        resultFcolor += (BRDF+Lo)*lightRadiance;
         // resultFcolor += vec3(dot(Fnormal, wi));
         // resultFcolor = vec3(rand_num_x,rand_num_y,0.0);
 
